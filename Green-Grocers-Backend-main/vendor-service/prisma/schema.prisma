@@ -1,0 +1,78 @@
+// Prisma Schema for Vendor Service - MySQL Database
+// Based on original Mongoose model: vendor.model.js
+// Only ONE table: Vendor (matching the model)
+// Nested arrays/objects stored as JSON columns (like MongoDB)
+
+generator client {
+  provider = "prisma-client-js"
+  engineType      = "binary"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Vendor Model - matches vendor.model.js exactly
+// Only ONE table for Vendor (all nested data in JSON)
+model Vendor {
+  id                  String   @id @default(uuid())
+  vendorId            String   @unique @db.VarChar(255) // Original: String, required, unique
+  userId              String   @db.VarChar(255) // Original: String, required
+  storeName           String   @db.VarChar(255) // Original: String, required
+  phone               String?  @db.VarChar(50) // Original: String
+  email               String?  @db.VarChar(255) // Original: String
+  address             String?  @db.Text // Original: String
+  vendorProfileImage  String?  @db.VarChar(500) // Original: String
+  vendorBannerImage   String?  @db.VarChar(500) // Original: String
+  inventoryCount      Int      @default(0) // Original: Number, default: 0
+  
+  // Categories array stored as JSON (matching MongoDB structure)
+  // Structure: [{ categoryId: String, title: String, image: String }]
+  categories          Json     @default("[]")
+  
+  description         String?  @db.Text // Original: String
+  status              String   @default("pending") @db.VarChar(50) // Original: enum ['pending', 'approved', 'rejected'], default: 'pending'
+  storeEnabled        Boolean  @default(true) // Original: Boolean, default: true
+  
+  // Coupons array stored as JSON (matching MongoDB couponSchema structure)
+  // Structure: Array of coupon objects with the following fields:
+  // {
+  //   id: String (uuid),
+  //   couponType: "Discount" | "FreeShipping" | "BuyXGetY",
+  //   name: String,
+  //   code: String (unique coupon code),
+  //   appliesTo: "AllProducts" | "SelectedProducts",
+  //   productIds: String[] (array of product IDs - for SelectedProducts),
+  //   buyXProductIds: String[] (for BuyXGetY coupon type),
+  //   getYProductIds: String[] (for BuyXGetY coupon type),
+  //   discountValue: Number (discount amount/percentage),
+  //   startDate: String (ISO date string),
+  //   endDate: String (ISO date string),
+  //   maxRedemptions: Number (maximum times coupon can be used),
+  //   perCustomerLimit: Number (max times per customer),
+  //   createdAt: String (ISO date string),
+  //   updatedAt: String (ISO date string)
+  // }
+  coupons             Json     @default("[]")
+  
+  // Additional store information
+  storeCurrency       String?  @db.VarChar(10) // Original: String
+  timezone           String?  @db.VarChar(100) // Original: String
+  workHours          String?  @db.VarChar(255) // Original: String
+  state              String?  @db.VarChar(255) // Original: String
+  city               String?  @db.VarChar(255) // Original: String
+  localGovernment    String?  @db.VarChar(255) // Original: String
+  country            String?  @db.VarChar(255) // Original: String
+  storeIndustries    Json     @default("[]") // Original: [String]
+  storeAddress       String?  @db.Text // Original: String
+  
+  createdAt          DateTime @default(now()) @map("created_at") // Original: timestamps: true
+  updatedAt          DateTime @updatedAt @map("updated_at") // Original: timestamps: true
+
+  @@map("vendors")
+  @@index([vendorId])
+  @@index([userId])
+  @@index([status])
+}
+

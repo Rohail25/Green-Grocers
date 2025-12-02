@@ -1,0 +1,57 @@
+// Prisma Schema for Client Service - MySQL Database
+// Based on original Mongoose models: client.model.js and wallet.model.js
+// Only 2 tables: Client and Wallet (matching the 2 models)
+// Nested arrays/objects stored as JSON columns (like MongoDB)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Client Model - matches client.model.js exactly
+// Only ONE table for Client (all nested data in JSON)
+model Client {
+  id              String   @id @default(uuid())
+  userId          String   @db.VarChar(255) // Original: mongoose.Schema.Types.ObjectId, required
+  clientId        String   @unique @db.VarChar(255) // Original: required, unique
+  fullName        String?  @db.VarChar(255) // Original: String
+  email           String?  @db.VarChar(255) // Original: String
+  phone           String?  @db.VarChar(50) // Original: String
+  
+  // Nested arrays stored as JSON (matching MongoDB structure)
+  favoriteProducts Json     @default("[]") // Original: [ObjectId]
+  ratingHistory     Json     @default("[]") // Original: [{productId, rating, review}]
+  logisticRatings   Json     @default("[]") // Original: [{orderId, rating, comment}]
+  
+  // Nested referral object stored as JSON (matching MongoDB structure)
+  referral Json @default("{\"code\":\"\",\"referredBy\":null,\"totalReferrals\":0,\"totalPoints\":0,\"history\":[]}") // Original: {code, referredBy, totalReferrals, totalPoints, history: [...]}
+  
+  createdAt DateTime @default(now()) @map("created_at") // Original: timestamps: true
+  updatedAt DateTime @updatedAt @map("updated_at") // Original: timestamps: true
+
+  @@map("clients")
+  @@index([userId])
+  @@index([clientId])
+}
+
+// Wallet Model - matches wallet.model.js exactly
+// Only ONE table for Wallet (transactions array in JSON)
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique @db.VarChar(255) // Original: mongoose.Schema.Types.ObjectId, required
+  balance   Decimal  @default(0) @db.Decimal(10, 2) // Original: Number, default: 0
+  
+  // Transactions array stored as JSON (matching MongoDB structure)
+  transactions Json   @default("[]") // Original: [{transactionId, type, amount, description, bankName, accountNumber, status, createdAt}]
+  
+  createdAt DateTime @default(now()) @map("created_at") // Original: timestamps: true
+  updatedAt DateTime @updatedAt @map("updated_at") // Original: timestamps: true
+
+  @@map("wallets")
+  @@index([userId])
+}
+

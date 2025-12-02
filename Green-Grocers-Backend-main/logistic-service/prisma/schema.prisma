@@ -1,0 +1,61 @@
+// Prisma Schema for Logistic Service - MySQL Database
+// Based on original Mongoose models: deliveryAssignment.model.js, earning.model.js
+// Only 2 tables: DeliveryAssignment, Earning (matching the 2 models)
+// Nested arrays/objects stored as JSON columns (like MongoDB)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// DeliveryAssignment Model - matches deliveryAssignment.model.js exactly
+// Only ONE table for DeliveryAssignment (vendorLocation in JSON)
+model DeliveryAssignment {
+  id                String   @id @default(uuid())
+  parcelNo          String   @db.VarChar(255) // Original: String, required
+  teamMemberId      String   @db.VarChar(255) // Original: ObjectId, ref: "TeamMember", required
+  orderId           String   @db.VarChar(255) // Original: ObjectId, ref: "Order", required
+  
+  // Vendor location stored as JSON (matching MongoDB structure)
+  vendorLocation    Json?    // Original: {address, coordinates: {lat, lng}}
+  
+  travelDistance    Decimal? @db.Decimal(10, 2) // Original: Number (in km)
+  estimatedTime     Int?     // Original: Number (in minutes)
+  status            String   @default("assigned") @db.VarChar(50) // Original: enum, default: "assigned"
+  assignedAt        DateTime @default(now()) // Original: Date, default: Date.now
+  startedAt         DateTime? // Original: Date
+  completedAt       DateTime? // Original: Date
+  authenticationCode String? @db.VarChar(255) // Original: String
+  createdAt         DateTime @default(now()) @map("created_at") // Original: timestamps: true
+  updatedAt         DateTime @updatedAt @map("updated_at") // Original: timestamps: true
+
+  @@map("delivery_assignments")
+  @@index([parcelNo])
+  @@index([teamMemberId])
+  @@index([orderId])
+  @@index([status])
+}
+
+// Earning Model - matches earning.model.js exactly
+model Earning {
+  id            String   @id @default(uuid())
+  logisticsId   String   @db.VarChar(255) // Original: ObjectId, ref: "TeamMember", required
+  orderId       String   @db.VarChar(255) // Original: ObjectId, ref: "Order", required
+  amount        Decimal  @db.Decimal(10, 2) // Original: Number, required
+  transactionId String?  @db.VarChar(255) // Original: String
+  paymentMethod String   @default("Wallet") @db.VarChar(50) // Original: enum, default: "Wallet"
+  status        String   @default("PENDING") @db.VarChar(50) // Original: enum, default: "PENDING"
+  paidAt        DateTime? // Original: Date
+  createdAt     DateTime @default(now()) @map("created_at") // Original: timestamps: true
+  updatedAt     DateTime @updatedAt @map("updated_at") // Original: timestamps: true
+
+  @@map("earnings")
+  @@index([logisticsId])
+  @@index([orderId])
+  @@index([status])
+}
+

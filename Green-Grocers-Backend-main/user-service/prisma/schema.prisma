@@ -1,0 +1,79 @@
+// Prisma Schema for User Service - MySQL Database
+// Based on original Mongoose models: user.model.js and Vehicle.model.js
+// Only 2 tables: User and Vehicle (matching the 2 models)
+// Nested arrays/objects stored as JSON columns (like MongoDB)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// User Model - matches user.model.js exactly
+// Only ONE table for User (all nested data in JSON)
+model User {
+  id                      String   @id @default(uuid())
+  email                   String?  @db.VarChar(255) // Original: String, lowercase, trim, unique
+  phone                   String?  @db.VarChar(50) // Original: String
+  password                String   @db.VarChar(255) // Original: String, required
+  platform                String   @db.VarChar(50) // Original: enum ["trivemart", "trivestore", "triveexpress"], required
+  role                    String   @default("customer") @db.VarChar(50) // Original: enum ["customer", "logistic", "vendor", "admin", "support", "agent"], default: "customer"
+  parentLogistic          String?  @db.VarChar(255) // Original: ObjectId, ref: "User", required if role === "agent"
+  
+  // Email verification
+  isEmailConfirmed        Boolean  @default(false) // Original: Boolean, default: false
+  emailVerificationToken  String?  @db.VarChar(255) // Original: String
+  emailVerificationExpires DateTime? // Original: Date
+  
+  // Logistic verification - stored as JSON array (matching MongoDB structure)
+  verificationDocuments   Json     @default("[]") // Original: [{documentType, documentUrl, status, uploadedAt}]
+  isVerified              Boolean  @default(false) // Original: Boolean, default: false
+  documentsUploaded       Boolean  @default(false) // Original: Boolean, default: false
+  isAvailable             Boolean  @default(false) // Original: Boolean, default: false
+  
+  // Profile
+  firstName               String?  @db.VarChar(255) // Original: String
+  lastName                String?  @db.VarChar(255) // Original: String
+  profileImage            String?  @db.VarChar(500) // Original: String
+  
+  // Nested arrays stored as JSON (matching MongoDB structure)
+  preferredVendors        Json     @default("[]") // Original: [ObjectId], ref: "User"
+  addresses               Json     @default("[]") // Original: [{street, city, state, zipCode, country}]
+  
+  // Additional fields (from controllers)
+  vendorId                String?  @db.VarChar(255) // Generated in controller
+  clientId                String?  @db.VarChar(255) // Generated in controller
+  googleId                String?  @db.VarChar(255)
+  facebookId              String?  @db.VarChar(255)
+  
+  createdAt               DateTime @default(now()) @map("created_at") // Original: timestamps: true
+  updatedAt               DateTime @updatedAt @map("updated_at") // Original: timestamps: true
+
+  @@map("users")
+  @@unique([email, platform]) // Unique constraint on email+platform combination
+  @@index([email])
+  @@index([platform])
+  @@index([role])
+  @@index([parentLogistic])
+}
+
+// Vehicle Model - matches Vehicle.model.js exactly
+model Vehicle {
+  id          String   @id @default(uuid())
+  userId      String   @db.VarChar(255) // Original: ObjectId, ref: "User", required
+  vehicleType String   @db.VarChar(255) // Original: String, required
+  vehicleModel String  @db.VarChar(255) // Original: String, required
+  vehicleColor String  @db.VarChar(255) // Original: String, required
+  plateNumber String   @unique @db.VarChar(255) // Original: String, required, unique
+  workHours   String   @db.VarChar(255) // Original: String, required
+  createdAt   DateTime @default(now()) @map("created_at") // Original: timestamps: true
+  updatedAt   DateTime @updatedAt @map("updated_at") // Original: timestamps: true
+
+  @@map("vehicles")
+  @@index([userId])
+  @@index([plateNumber])
+}
+

@@ -1,0 +1,4 @@
+# Allow access to uploaded files
+Order allow,deny
+Allow from all
+

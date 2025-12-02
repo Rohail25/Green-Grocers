@@ -1,0 +1,23 @@
+# Base image
+FROM node:18
+
+# Working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json ./
+
+# Install dependencies
+RUN npm install --force
+
+# Install nodemon globally
+RUN npm install -g nodemon
+
+# Copy application source code
+COPY . .
+
+# Expose application port (match what's in your app)
+EXPOSE 3001
+
+# Run the development server
+CMD ["npm", "run", "dev"]
