@@ -10,20 +10,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email'] ?? '';
     $password = $_POST['password'] ?? '';
     
-    if (loginUser($email, $password)) {
+    // Auto-detect platform from email domain or find in database
+    $platform = 'trivemart'; // Default
+    
+    // Auto-detect platform from email domain
+    if (strpos($email, '@trivestore.com') !== false) {
+        $platform = 'trivestore';
+    } elseif (strpos($email, '@trivemart.com') !== false) {
+        $platform = 'trivemart';
+    } else {
+        // If email doesn't match known domains, try to find user in database
+        // by checking both platforms (try trivemart first, then trivestore)
+        $conn = getDBConnection();
+        $stmt = $conn->prepare("SELECT platform FROM users WHERE email = :email LIMIT 1");
+        $stmt->execute([':email' => strtolower(trim($email))]);
+        $userPlatform = $stmt->fetchColumn();
+        if ($userPlatform) {
+            $platform = $userPlatform;
+        }
+    }
+    
+    // Match Node.js flow: login with detected platform
+    if (loginUser($email, $password, $platform)) {
         $user = getCurrentUser();
-        if ($user['role'] === 'admin') {
+        
+        // Redirect based on role
+        if ($user['role'] === 'admin' || $user['role'] === 'vendor') {
+            // Admin and Vendor → Admin Dashboard
             header('Location: ' . BASE_PATH . '/dashboard/pages/dashboard.php');
         } elseif ($user['role'] === 'logistic') {
-            header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
-        } elseif ($user['role'] === 'vendor') {
+            // Logistic → Customer Dashboard (or create separate logistic dashboard)
             header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
         } else {
+            // Customer → Customer Dashboard
             header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
         }
         exit;
     } else {
-        $error = 'Invalid email or password';
+        $error = $_SESSION['error'] ?? 'Invalid email or password';
+        unset($_SESSION['error']);
     }
 }
 ?>

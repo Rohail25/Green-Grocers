@@ -56,13 +56,23 @@ if (empty($path) || $path === 'index.php') {
 } elseif (strpos($path, 'order-success') !== false) {
     requireAuth();
     require_once __DIR__ . '/website/pages/order-success.php';
+} elseif (strpos($path, 'dashboard/pages/') === 0) {
+    // Route dashboard pages
+    $dashboardPage = str_replace('dashboard/pages/', '', $path);
+    $dashboardFilePath = __DIR__ . '/dashboard/pages/' . $dashboardPage;
+    if (file_exists($dashboardFilePath) && is_file($dashboardFilePath)) {
+        require_once $dashboardFilePath;
+    } else {
+        header('Location: ' . BASE_PATH . '/dashboard/pages/dashboard.php');
+        exit;
+    }
 } else {
     // Try direct file access
     $filePath = __DIR__ . '/' . str_replace('..', '', $path);
     if (file_exists($filePath) && is_file($filePath)) {
         require_once $filePath;
     } else {
-        header('Location: /green-grocers/');
+        header('Location: ' . BASE_PATH . '/');
         exit;
     }
 }

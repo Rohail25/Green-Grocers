@@ -1,15 +1,19 @@
 <?php
+/**
+ * Order Creation - Matching Node.js Backend Flow
+ */
 session_start();
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/config.php'; // for BASE_PATH
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/cart.php';
 
 requireAuth();
 
 $currentUser = getCurrentUser();
-$cartItems = getCartItems();
+$cart = getCart($currentUser['id']);
 
-if (empty($cartItems)) {
+if (empty($cart['items']) || count($cart['items']) === 0) {
     $_SESSION['error'] = 'Your cart is empty';
     header('Location: ' . BASE_PATH . '/cart/checkout.php');
     exit;
@@ -17,12 +21,14 @@ if (empty($cartItems)) {
 
 // Get form data
 $paymentMethod = $_POST['payment_method'] ?? 'card';
-$deliveryAddress = $_POST['delivery_address'] ?? '';
+$shippingAddress = $_POST['delivery_address'] ?? '';
 $notes = $_POST['notes'] ?? '';
-$fullName = $_POST['full_name'] ?? ($currentUser['first_name'] . ' ' . $currentUser['last_name']);
+$customerName = $_POST['full_name'] ?? trim(($currentUser['firstName'] ?? '') . ' ' . ($currentUser['lastName'] ?? ''));
 $phone = $_POST['phone'] ?? '';
+$discount = (float)($_POST['discount'] ?? 0);
+$couponCode = $_POST['coupon_code'] ?? null;
 
-if (empty($deliveryAddress)) {
+if (empty($shippingAddress)) {
     $_SESSION['error'] = 'Please provide a delivery address';
     header('Location: ' . BASE_PATH . '/cart/checkout.php?step=2');
     exit;
@@ -30,73 +36,121 @@ if (empty($deliveryAddress)) {
 
 $conn = getDBConnection();
 
-// Calculate total
-$total = getCartTotal();
-$vat = round($total * 0.05);
-$finalTotal = $total + $vat;
+// Calculate total from cart record
+$items = $cart['items'];
+$totalAmount = (float)$cart['totalPrice'];
 
-// Generate order number
-$orderNumber = 'ORD-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6));
+// Apply discount if any
+$finalTotal = max(0, $totalAmount - $discount);
 
+// Create order with items as JSON array
 try {
-    // Start transaction
     $conn->beginTransaction();
+    
+    // Extract vendorId from first item if available (fallback to empty string to satisfy NOT NULL)
+    $vendorId = !empty($items) && isset($items[0]['vendorId']) && $items[0]['vendorId']
+        ? $items[0]['vendorId']
+        : 'UNKNOWN';
 
-    // Create order
-    $stmt = $conn->prepare("INSERT INTO orders (user_id, order_number, total_amount, status, payment_method, delivery_address, notes) 
-                            VALUES (:user_id, :order_number, :total_amount, 'Placed', :payment_method, :delivery_address, :notes)");
+    $stmt = $conn->prepare("
+        INSERT INTO orders (
+            id,
+            userId,
+            vendorId,
+            items,
+            shippingAddress,
+            customerName,
+            totalAmount,
+            discountAmount,
+            couponCode,
+            paymentMethod,
+            notes
+        ) VALUES (
+            UUID(),
+            :userId,
+            :vendorId,
+            :items,
+            :shippingAddress,
+            :customerName,
+            :totalAmount,
+            :discountAmount,
+            :couponCode,
+            :paymentMethod,
+            :notes
+        )
+    ");
+    
     $stmt->execute([
-        ':user_id'         => $currentUser['id'],
-        ':order_number'    => $orderNumber,
-        ':total_amount'    => $finalTotal,
-        ':payment_method'  => $paymentMethod,
-        ':delivery_address'=> $deliveryAddress,
-        ':notes'           => $notes,
+        ':userId' => $currentUser['id'],
+        ':vendorId' => $vendorId,
+        ':items' => json_encode($items),
+        ':shippingAddress' => json_encode([
+            'street' => $shippingAddress,
+            'phone' => $phone,
+            'notes' => $notes
+        ]),
+        ':customerName' => $customerName,
+        ':totalAmount' => $finalTotal,
+        ':discountAmount' => $discount,
+        ':couponCode' => $couponCode,
+        ':paymentMethod' => strtoupper($paymentMethod),
+        ':notes' => $notes
     ]);
-
-    $orderId = $conn->lastInsertId();
-
-    // Create order items
-    $itemStmt = $conn->prepare("INSERT INTO order_items (order_id, product_id, package_id, name, quantity, price) 
-                                VALUES (:order_id, :product_id, :package_id, :name, :quantity, :price)");
-
-    foreach ($cartItems as $item) {
-        $price = $item['retailPrice'] ?? $item['retail_price'] ?? 0;
-        $discountValue = $item['discount']['value'] ?? ($item['discount_value'] ?? 0);
-        $finalPrice = $price * (1 - ($discountValue / 100));
-        $quantity = $item['cart_quantity'] ?? 1;
-        $itemName = $item['name'];
-
-        $isPackage = isset($item['packageDay']) || isset($item['package_day']);
-        $productId = $isPackage ? null : $item['id'];
-        $packageId = $isPackage ? $item['id'] : null;
-
-        $itemStmt->execute([
-            ':order_id'   => $orderId,
-            ':product_id' => $productId,
-            ':package_id' => $packageId,
-            ':name'       => $itemName,
-            ':quantity'   => $quantity,
-            ':price'      => $finalPrice,
-        ]);
+    
+    // Match Node.js: update product quantities
+    foreach ($items as $item) {
+        if (isset($item['productId']) && isset($item['quantity'])) {
+            // Update product stock
+            $updateStmt = $conn->prepare("
+                UPDATE products 
+                SET totalQuantityInStock = totalQuantityInStock - :quantity 
+                WHERE id = :productId
+            ");
+            $updateStmt->execute([
+                ':quantity' => (int)$item['quantity'],
+                ':productId' => $item['productId']
+            ]);
+            
+            // Match Node.js: update variant quantity if variantIndex provided
+            if (isset($item['variantIndex'])) {
+                $productStmt = $conn->prepare("SELECT variants FROM products WHERE id = :id");
+                $productStmt->execute([':id' => $item['productId']]);
+                $product = $productStmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($product && !empty($product['variants'])) {
+                    $variants = json_decode($product['variants'], true);
+                    $variantIndex = (int)$item['variantIndex'];
+                    
+                    if (isset($variants[$variantIndex])) {
+                        $variants[$variantIndex]['quantity'] = ($variants[$variantIndex]['quantity'] ?? 0) - (int)$item['quantity'];
+                        $variants[$variantIndex]['inStock'] = ($variants[$variantIndex]['quantity'] ?? 0) > 0;
+                        
+                        $variantStmt = $conn->prepare("UPDATE products SET variants = :variants WHERE id = :id");
+                        $variantStmt->execute([
+                            ':variants' => json_encode($variants),
+                            ':id' => $item['productId']
+                        ]);
+                    }
+                }
+            }
+        }
     }
-
-    // Commit
-    $conn->commit();
-
-    // Clear cart
+    
+    // Match Node.js: clear cart after order creation
     clearCart();
-
+    
+    $conn->commit();
+    
     $_SESSION['order_success'] = true;
     $_SESSION['order_number'] = $orderNumber;
-
+    
     header('Location: ' . BASE_PATH . '/website/pages/order-success.php?order=' . $orderNumber);
     exit;
 } catch (PDOException $e) {
     $conn->rollBack();
+    error_log("Order creation error: " . $e->getMessage());
     $_SESSION['error'] = 'Failed to create order: ' . $e->getMessage();
     header('Location: ' . BASE_PATH . '/cart/checkout.php?step=3');
     exit;
 }
 ?>
-

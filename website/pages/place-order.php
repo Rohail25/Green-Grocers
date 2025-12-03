@@ -10,19 +10,22 @@ require_once __DIR__ . '/../../includes/cart.php';
 $pageTitle = 'Checkout';
 $step = $_GET['step'] ?? 1;
 $currentUser = getCurrentUser();
+// Normalize name fields to support both new (firstName/lastName) and legacy (first_name/last_name)
+$userFirstName = $currentUser['firstName'] ?? $currentUser['first_name'] ?? '';
+$userLastName  = $currentUser['lastName'] ?? $currentUser['last_name'] ?? '';
 
 // Get actual cart items
 $cartItems = getCartItems();
 
-// Calculate totals
+// Calculate totals using new schema (retailPrice + discount JSON)
 $subtotal = 0;
 foreach ($cartItems as $item) {
-    $price = $item['retail_price'] ?? 0;
-    $discount = ($item['discount_value'] ?? 0) / 100;
-    $finalPrice = $price * (1 - $discount);
+    $basePrice = $item['retailPrice'] ?? 0;
+    $discountPercent = $item['discount']['value'] ?? 0;
+    $finalPrice = $basePrice - ($basePrice * $discountPercent / 100);
     $subtotal += $finalPrice * ($item['cart_quantity'] ?? 1);
 }
-$vat = round($subtotal * 0.05);
+$vat = round($subtotal * 0.05, 2);
 $total = $subtotal + $vat;
 ?>
 <?php require_once __DIR__ . '/../layouts/header.php'; ?>
@@ -59,7 +62,9 @@ $total = $subtotal + $vat;
                             <?php else: ?>
                                 <?php foreach ($cartItems as $item): ?>
                                     <?php
-                                    $discountPrice = ($item['retail_price'] ?? 0) - (($item['retail_price'] ?? 0) * (($item['discount_value'] ?? 0) / 100));
+                                    $basePrice = $item['retailPrice'] ?? 0;
+                                    $discountPercent = $item['discount']['value'] ?? 0;
+                                    $discountPrice = $basePrice - ($basePrice * $discountPercent / 100);
                                     $image = !empty($item['images']) ? $item['images'][0] : imagePath('product.jpg');
                                     $quantity = $item['cart_quantity'] ?? 1;
                                     $itemTotal = $discountPrice * $quantity;
@@ -69,8 +74,8 @@ $total = $subtotal + $vat;
                                         <div class="flex-1">
                                             <div class="flex justify-between items-start">
                                                 <div>
-                                                    <div class="font-semibold"><?php echo htmlspecialchars($item['name']); ?> <span class="text-gray-500">(<?php echo htmlspecialchars($item['item_size'] ?? ''); ?>)</span></div>
-                                                    <div class="text-xs text-gray-500"><?php echo htmlspecialchars($item['category_name'] ?? 'Package'); ?></div>
+                                                    <div class="font-semibold"><?php echo htmlspecialchars($item['name']); ?> <span class="text-gray-500">(<?php echo htmlspecialchars($item['itemSize'] ?? ''); ?>)</span></div>
+                                                    <div class="text-xs text-gray-500"><?php echo htmlspecialchars($item['category_name'] ?? ($item['cart_type'] ?? 'Product')); ?></div>
                                                     <div class="text-xs text-gray-400 mt-1">Quantity: <?php echo $quantity; ?></div>
                                                 </div>
                                                 <div class="font-semibold text-green-600">$<?php echo number_format($itemTotal, 2); ?></div>
@@ -91,7 +96,7 @@ $total = $subtotal + $vat;
                             <div class="space-y-4">
                                 <div>
                                     <label class="block mb-2 font-semibold">Full Name <span class="text-red-500">*</span></label>
-                                    <input type="text" name="full_name" required class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($currentUser['first_name'] . ' ' . $currentUser['last_name']); ?>">
+                                    <input type="text" name="full_name" required class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars(trim($userFirstName . ' ' . $userLastName)); ?>">
                                 </div>
                                 
                                 <div>
@@ -131,7 +136,7 @@ $total = $subtotal + $vat;
                             
                             <!-- Hidden fields for order data -->
                             <input type="hidden" name="delivery_address" value="<?php echo htmlspecialchars($_POST['delivery_address'] ?? ''); ?>">
-                            <input type="hidden" name="full_name" value="<?php echo htmlspecialchars($currentUser['first_name'] . ' ' . $currentUser['last_name']); ?>">
+                            <input type="hidden" name="full_name" value="<?php echo htmlspecialchars(trim($userFirstName . ' ' . $userLastName)); ?>">
                             <input type="hidden" name="phone" value="<?php echo htmlspecialchars($currentUser['phone'] ?? ''); ?>">
                             
                             <div class="flex justify-end gap-4">

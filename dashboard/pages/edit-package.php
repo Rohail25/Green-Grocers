@@ -4,25 +4,32 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to access
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+    exit;
+}
 $pageTitle = 'Edit Package';
 
-$packageId = intval($_GET['id'] ?? 0);
+// Packages use UUID (string) IDs
+$packageId = $_GET['id'] ?? '';
 $error = '';
 $success = '';
 
-if ($packageId <= 0) {
-    header('Location: packages.php');
+if (empty($packageId)) {
+    header('Location: ' . BASE_PATH . '/dashboard/pages/packages.php');
     exit;
 }
 
 $conn = getDBConnection();
 $stmt = $conn->prepare("SELECT * FROM packages WHERE id = :id");
 $stmt->execute([':id' => $packageId]);
-$package = $stmt->fetch();
+$package = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$package) {
-    header('Location: packages.php');
+    header('Location: ' . BASE_PATH . '/dashboard/pages/packages.php');
     exit;
 }
 
@@ -93,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($executed) {
             $success = 'Package updated successfully!';
-            header('Location: packages.php?success=1');
+            header('Location: ' . BASE_PATH . '/dashboard/pages/packages.php?success=1');
             exit;
         } else {
             $error = 'Failed to update package';
@@ -108,7 +115,7 @@ $products = getAllProducts();
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h2 class="text-3xl font-bold text-gray-800">Edit Package</h2>
-        <a href="packages.php" class="text-gray-600 hover:text-gray-800">← Back to Packages</a>
+        <a href="<?php echo BASE_PATH; ?>/dashboard/pages/packages.php" class="text-gray-600 hover:text-gray-800">← Back to Packages</a>
     </div>
 
     <?php if ($error): ?>
@@ -128,18 +135,22 @@ $products = getAllProducts();
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block mb-2 font-semibold">Assigned Day</label>
-                <input type="text" name="assigned_day" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($package['package_day'] ?? ''); ?>">
+                <input type="text" name="assigned_day" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($package['packageDay'] ?? ''); ?>">
             </div>
             <div>
                 <label class="block mb-2 font-semibold">Price ($) <span class="text-red-500">*</span></label>
-                <input type="number" name="price" step="0.01" required min="0" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($package['retail_price']); ?>">
+                <input type="number" name="price" step="0.01" required min="0" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($package['retailPrice'] ?? 0); ?>">
             </div>
         </div>
 
         <!-- Discount -->
         <div>
             <label class="block mb-2 font-semibold">Discount (%)</label>
-            <input type="number" name="discount_value" step="0.01" min="0" max="100" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($package['discount_value'] ?? 0); ?>">
+            <?php
+                $discountData = !empty($package['discount']) ? json_decode($package['discount'], true) : ['type' => 'percentage', 'value' => 0];
+                $discountValue = $discountData['value'] ?? 0;
+            ?>
+            <input type="number" name="discount_value" step="0.01" min="0" max="100" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($discountValue); ?>">
         </div>
 
         <!-- Image Upload -->
@@ -168,7 +179,7 @@ $products = getAllProducts();
                         <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block mb-1 text-sm font-semibold">Product Name</label>
-                                <input type="text" name="items[<?php echo $idx; ?>][name]" required class="w-full border px-3 py-2 rounded-md" value="<?php echo htmlspecialchars($item['product_name']); ?>">
+                                <input type="text" name="items[<?php echo $idx; ?>][name]" required class="w-full border px-3 py-2 rounded-md" value="<?php echo htmlspecialchars($item['name'] ?? ''); ?>">
                             </div>
                             <div>
                                 <label class="block mb-1 text-sm font-semibold">Quantity</label>
@@ -191,14 +202,14 @@ $products = getAllProducts();
         <!-- Featured -->
         <div>
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="is_featured" value="1" <?php echo $package['is_featured'] ? 'checked' : ''; ?>>
+                <input type="checkbox" name="is_featured" value="1" <?php echo !empty($package['isFeatured']) ? 'checked' : ''; ?>>
                 <span class="font-semibold">Mark as Featured Package</span>
             </label>
         </div>
 
         <!-- Buttons -->
         <div class="flex justify-center gap-4 pt-4">
-            <a href="packages.php" class="px-6 py-2 rounded-md border border-gray-300 hover:bg-gray-100">
+            <a href="<?php echo BASE_PATH; ?>/dashboard/pages/packages.php" class="px-6 py-2 rounded-md border border-gray-300 hover:bg-gray-100">
                 Cancel
             </a>
             <button type="submit" class="px-6 py-2 rounded-md bg-green-600 text-white hover:bg-green-700">

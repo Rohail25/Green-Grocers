@@ -4,7 +4,13 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to access
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+    exit;
+}
 $pageTitle = 'Manage Orders';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
@@ -36,14 +42,20 @@ $orders = getAllOrders();
             </thead>
             <tbody class="bg-white divide-y">
                 <?php foreach ($orders as $order): ?>
+                    <?php
+                    // Order number: use id (UUID) as display reference
+                    $orderNumber = $order['id'] ?? '';
+                    $customerName = trim(($order['firstName'] ?? '') . ' ' . ($order['lastName'] ?? ''));
+                    $totalAmount = $order['totalAmount'] ?? 0;
+                    ?>
                     <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-2"><?php echo htmlspecialchars($order['order_number']); ?></td>
-                        <td class="px-4 py-2"><?php echo htmlspecialchars(($order['first_name'] ?? '') . ' ' . ($order['last_name'] ?? '')); ?></td>
+                        <td class="px-4 py-2"><?php echo htmlspecialchars($orderNumber); ?></td>
+                        <td class="px-4 py-2"><?php echo htmlspecialchars($customerName); ?></td>
                         <td class="px-4 py-2"><?php echo date('Y-m-d H:i', strtotime($order['created_at'])); ?></td>
-                        <td class="px-4 py-2">$<?php echo number_format($order['total_amount'], 2); ?></td>
+                        <td class="px-4 py-2">$<?php echo number_format($totalAmount, 2); ?></td>
                         <td class="px-4 py-2"><?php echo htmlspecialchars($order['status']); ?></td>
                         <td class="px-4 py-2">
-                            <button onclick="openModal(<?php echo $order['id']; ?>, '<?php echo htmlspecialchars($order['status']); ?>')" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700">Update</button>
+                            <button onclick="openModal('<?php echo $order['id']; ?>', '<?php echo htmlspecialchars($order['status']); ?>')" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700">Update</button>
                         </td>
                     </tr>
                 <?php endforeach; ?>

@@ -130,14 +130,15 @@ $featuredPackages = getFeaturedPackages(6);
                     $basePrice = $pkg['retailPrice'] ?? 0;
                     $discountValue = $pkg['discount']['value'] ?? 0;
                     $discountPrice = $basePrice - ($basePrice * $discountValue / 100);
-                    $image = $pkg['image'] ? imagePath(basename($pkg['image'])) : imagePath('package.jpg');
+                    // Use stored image path if present (already includes BASE_PATH), else fallback
+                    $image = !empty($pkg['image']) ? $pkg['image'] : imagePath('package.jpg');
                     ?>
                     <div class="bg-white shadow-md rounded-xl overflow-hidden p-4">
                         <div class="relative w-full h-44 flex items-center justify-center bg-gray-100 rounded-lg">
                             <img src="<?php echo htmlspecialchars($image); ?>" alt="<?php echo htmlspecialchars($pkg['name']); ?>" class="object-contain h-full" />
                             <div class="absolute top-2 left-2">
                                 <span class="bg-green-600 text-white font-semibold text-xs px-3 py-1 rounded-md shadow">
-                                    <?php echo htmlspecialchars($pkg['package_day'] ?? ''); ?> Package
+                                    <?php echo htmlspecialchars($pkg['packageDay'] ?? ''); ?> Package
                                 </span>
                             </div>
                         </div>

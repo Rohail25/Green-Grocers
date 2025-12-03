@@ -1,27 +1,34 @@
 <?php
-session_start();
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to delete products
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/');
+    exit;
+}
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
-$productId = intval($_POST['id'] ?? $_GET['id'] ?? 0);
+// Products use UUID (string) IDs, so do not cast to int
+$productId = $_POST['id'] ?? $_GET['id'] ?? '';
 
-if ($action === 'delete' && $productId > 0) {
+if ($action === 'delete' && !empty($productId)) {
     $conn = getDBConnection();
+
+    // Hard delete: completely remove the product row from the database
     $stmt = $conn->prepare("DELETE FROM products WHERE id = :id");
 
-    if ($stmt->execute([':id' => $productId])) {
+    if ($stmt->execute([':id' => $productId]) && $stmt->rowCount() > 0) {
         $_SESSION['success'] = 'Product deleted successfully';
     } else {
         $_SESSION['error'] = 'Failed to delete product';
     }
-    
-    header('Location: ' . BASE_PATH . '/dashboard/pages/products.php');
-    exit;
 }
 
+// Redirect back to products page in all cases (refresh list)
 header('Location: ' . BASE_PATH . '/dashboard/pages/products.php');
 exit;
 ?>

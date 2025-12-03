@@ -1,29 +1,34 @@
 <?php
-session_start();
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to delete packages
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/');
+    exit;
+}
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
-$packageId = intval($_POST['id'] ?? $_GET['id'] ?? 0);
+// Packages use UUID (string) IDs, so do not cast to int
+$packageId = $_POST['id'] ?? $_GET['id'] ?? '';
 
-if ($action === 'delete' && $packageId > 0) {
+if ($action === 'delete' && !empty($packageId)) {
     $conn = getDBConnection();
 
-    // Delete package (package_items table may not exist in new schema)
+    // Hard delete: completely remove the package row from the database
     $stmt = $conn->prepare("DELETE FROM packages WHERE id = :id");
 
-    if ($stmt->execute([':id' => $packageId])) {
+    if ($stmt->execute([':id' => $packageId]) && $stmt->rowCount() > 0) {
         $_SESSION['success'] = 'Package deleted successfully';
     } else {
         $_SESSION['error'] = 'Failed to delete package';
     }
-    
-    header('Location: ' . BASE_PATH . '/dashboard/pages/packages.php');
-    exit;
 }
 
+// Redirect back to packages page in all cases
 header('Location: ' . BASE_PATH . '/dashboard/pages/packages.php');
 exit;
 ?>

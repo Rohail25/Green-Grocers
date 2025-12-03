@@ -4,11 +4,26 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to access
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+    exit;
+}
 $pageTitle = 'Create Package';
 
 $error = '';
 $success = '';
+
+// Simple UUIDv4 generator for package IDs (matches VARCHAR(36) schema)
+function generatePackageId(): string {
+    $data = random_bytes(16);
+    $data[6] = chr((ord($data[6]) & 0x0f) | 0x40); // version 4
+    $data[8] = chr((ord($data[8]) & 0x3f) | 0x80); // variant
+
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -23,7 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please fill in all required fields';
     } else {
         $conn = getDBConnection();
-        
+        // Generate UUID for package id
+        $packageId = generatePackageId();
+
         // Handle image upload
         $imagePath = '';
         if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
@@ -54,10 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $itemsJson = json_encode($itemsPayload);
         $discountJson = json_encode(['type' => 'percentage', 'value' => $discountValue]);
 
-        // Insert package (new schema fields)
-        $stmt = $conn->prepare("INSERT INTO packages (name, packageDay, retailPrice, discount, isFeatured, image, items, status) 
-                                VALUES (:name, :packageDay, :price, :discount, :isFeatured, :image, :items, 'active')");
+        // Insert package (new schema fields, including id)
+        $stmt = $conn->prepare("INSERT INTO packages (id, name, packageDay, retailPrice, discount, isFeatured, image, items, status) 
+                                VALUES (:id, :name, :packageDay, :price, :discount, :isFeatured, :image, :items, 'active')");
         $executed = $stmt->execute([
+            ':id'         => $packageId,
             ':name'       => $name,
             ':packageDay' => $packageDay,
             ':price'      => $price,
@@ -84,7 +102,7 @@ $products = getAllProducts();
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h2 class="text-3xl font-bold text-gray-800">Create Package</h2>
-        <a href="packages.php" class="text-gray-600 hover:text-gray-800">← Back to Packages</a>
+        <a href="<?php echo BASE_PATH; ?>/dashboard/pages/packages.php" class="text-gray-600 hover:text-gray-800">← Back to Packages</a>
     </div>
 
     <?php if ($error): ?>

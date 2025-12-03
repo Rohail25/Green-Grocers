@@ -4,7 +4,13 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to access
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+    exit;
+}
 $pageTitle = 'Manage Products';
 
 $products = getAllProducts();
@@ -14,7 +20,7 @@ $products = getAllProducts();
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row items-center justify-between gap-4">
         <h2 class="text-3xl font-bold text-gray-800">Manage Products</h2>
-        <a href="add-product.php" class="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition">
+        <a href="<?php echo BASE_PATH; ?>/dashboard/pages/add-product.php" class="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
             Add Product
         </a>
@@ -41,11 +47,11 @@ $products = getAllProducts();
                         </td>
                         <td class="px-4 py-2"><?php echo htmlspecialchars($product['name']); ?></td>
                         <td class="px-4 py-2"><?php echo htmlspecialchars($product['category_name'] ?? 'N/A'); ?></td>
-                        <td class="px-4 py-2">$<?php echo number_format($product['retail_price'], 2); ?></td>
-                        <td class="px-4 py-2"><?php echo $product['stock_quantity']; ?></td>
-                        <td class="px-4 py-2"><?php echo $product['stock_quantity'] > 0 ? 'Available' : 'Out of Stock'; ?></td>
+                        <td class="px-4 py-2">$<?php echo number_format($product['retailPrice'] ?? 0, 2); ?></td>
+                        <td class="px-4 py-2"><?php echo $product['totalQuantityInStock'] ?? 0; ?></td>
+                        <td class="px-4 py-2"><?php echo ($product['totalQuantityInStock'] ?? 0) > 0 ? 'Available' : 'Out of Stock'; ?></td>
                         <td class="px-4 py-2 space-x-2">
-                            <a href="edit-product.php?id=<?php echo $product['id']; ?>" class="text-blue-600 hover:text-blue-800">Edit</a>
+                            <a href="<?php echo BASE_PATH; ?>/dashboard/pages/edit-product.php?id=<?php echo $product['id']; ?>" class="text-blue-600 hover:text-blue-800">Edit</a>
                             <form method="POST" action="<?php echo BASE_PATH; ?>/includes/product-action.php" class="inline" onsubmit="return confirm('Are you sure you want to delete this product?');">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?php echo $product['id']; ?>">

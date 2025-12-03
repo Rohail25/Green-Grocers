@@ -4,11 +4,26 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to access
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+    exit;
+}
 $pageTitle = 'Add New Product';
 
 $error = '';
 $success = '';
+
+// Simple UUIDv4 generator for product IDs (matches VARCHAR(36) schema)
+function generateProductId(): string {
+    $data = random_bytes(16);
+    $data[6] = chr((ord($data[6]) & 0x0f) | 0x40); // version 4
+    $data[8] = chr((ord($data[8]) & 0x3f) | 0x80); // variant
+
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -25,13 +40,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $conn = getDBConnection();
     $stmt = $conn->prepare("SELECT id FROM categories WHERE title = :title");
     $stmt->execute([':title' => $categoryName]);
-    $category = $stmt->fetch();
+    $category = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$category) {
         $error = 'Category not found';
     } elseif (empty($name) || $price <= 0) {
         $error = 'Please fill in all required fields';
     } else {
+        // Generate a UUID-like product ID to match Node.js schema
+        $productId = generateProductId();
+
         // Handle image upload
         $imagePath = '';
         if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
@@ -46,13 +64,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        // Insert product (new schema: categoryId, retailPrice, status, isFeatured, discount JSON)
+        // Insert product (new schema: id, categoryId, retailPrice, status, isFeatured, discount JSON)
         $images = $imagePath ? json_encode([$imagePath]) : json_encode([]);
         $discount = json_encode(['type' => 'percentage', 'value' => $discountValue]);
-        $stmt = $conn->prepare("INSERT INTO products (name, categoryId, retailPrice, totalQuantityInStock, itemSize, description, discount, isFeatured, images, status) 
-                                VALUES (:name, :categoryId, :price, :stock, :itemSize, :description, :discount, :isFeatured, :images, 'active')");
+        $stmt = $conn->prepare("INSERT INTO products (id, name, categoryId, retailPrice, totalQuantityInStock, itemSize, description, discount, isFeatured, images, status) 
+                                VALUES (:id, :name, :categoryId, :price, :stock, :itemSize, :description, :discount, :isFeatured, :images, 'active')");
         
         $executed = $stmt->execute([
+            ':id'         => $productId,
             ':name'       => $name,
             ':categoryId' => $category['id'],
             ':price'      => $price,
@@ -66,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($executed) {
             $success = 'Product added successfully!';
-            header('Location: products.php?success=1');
+            header('Location: ' . BASE_PATH . '/dashboard/pages/products.php?success=1');
             exit;
         } else {
             $error = 'Failed to add product';
@@ -81,7 +100,7 @@ $categories = getCategories();
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h2 class="text-3xl font-bold text-gray-800">Add New Product</h2>
-        <a href="products.php" class="text-gray-600 hover:text-gray-800">← Back to Products</a>
+        <a href="<?php echo BASE_PATH; ?>/dashboard/pages/products.php" class="text-gray-600 hover:text-gray-800">← Back to Products</a>
     </div>
 
     <?php if ($error): ?>
@@ -172,7 +191,7 @@ $categories = getCategories();
 
         <!-- Buttons -->
         <div class="flex justify-center gap-4 pt-4">
-            <a href="products.php" class="px-6 py-2 rounded-md border border-gray-300 hover:bg-gray-100">
+            <a href="<?php echo BASE_PATH; ?>/dashboard/pages/products.php" class="px-6 py-2 rounded-md border border-gray-300 hover:bg-gray-100">
                 Cancel
             </a>
             <button type="submit" class="px-6 py-2 rounded-md bg-green-600 text-white hover:bg-green-700">

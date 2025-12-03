@@ -4,34 +4,48 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
-requireAuth('admin');
+// Allow both admin and vendor to access
+requireAuth();
+$currentUser = getCurrentUser();
+if (!in_array($currentUser['role'], ['admin', 'vendor'])) {
+    header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+    exit;
+}
 $pageTitle = 'Edit Product';
 
-$productId = intval($_GET['id'] ?? 0);
+$productId = $_GET['id'] ?? '';
 $error = '';
 $success = '';
 
-if ($productId <= 0) {
-    header('Location: products.php');
+if (empty($productId)) {
+    header('Location: ' . BASE_PATH . '/dashboard/pages/products.php');
     exit;
 }
 
 $conn = getDBConnection();
 $stmt = $conn->prepare("SELECT * FROM products WHERE id = :id");
 $stmt->execute([':id' => $productId]);
-$product = $stmt->fetch();
+$product = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$product) {
-    header('Location: products.php');
+    header('Location: ' . BASE_PATH . '/dashboard/pages/products.php');
     exit;
 }
 
-$product['images'] = $product['images'] ? json_decode($product['images'], true) : [];
+// Decode JSON fields
+$product['images'] = !empty($product['images']) ? json_decode($product['images'], true) : [];
+$product['discount'] = !empty($product['discount']) ? json_decode($product['discount'], true) : ['type' => 'percentage', 'value' => 0];
 
 // Get category
-$catStmt = $conn->prepare("SELECT title FROM categories WHERE id = :id");
-$catStmt->execute([':id' => $product['categoryId']]);
-$category = $catStmt->fetch();
+$category = ['title' => ''];
+if (!empty($product['categoryId'])) {
+    $catStmt = $conn->prepare("SELECT title FROM categories WHERE id = :id");
+    $catStmt->execute([':id' => $product['categoryId']]);
+    $categoryResult = $catStmt->fetch(PDO::FETCH_ASSOC);
+    if ($categoryResult) {
+        $category = $categoryResult;
+    }
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -47,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Get category ID
     $catStmt = $conn->prepare("SELECT id FROM categories WHERE title = :title");
     $catStmt->execute([':title' => $categoryName]);
-    $newCategory = $catStmt->fetch();
+    $newCategory = $catStmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$newCategory) {
         $error = 'Category not found';
@@ -99,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($executed) {
             $success = 'Product updated successfully!';
-            header('Location: products.php?success=1');
+            header('Location: ' . BASE_PATH . '/dashboard/pages/products.php?success=1');
             exit;
         } else {
             $error = 'Failed to update product';
@@ -115,7 +129,7 @@ $categories = getCategories();
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h2 class="text-3xl font-bold text-gray-800">Edit Product</h2>
-        <a href="products.php" class="text-gray-600 hover:text-gray-800">← Back to Products</a>
+        <a href="<?php echo BASE_PATH; ?>/dashboard/pages/products.php" class="text-gray-600 hover:text-gray-800">← Back to Products</a>
     </div>
 
     <?php if ($error): ?>
@@ -164,11 +178,11 @@ $categories = getCategories();
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block mb-2 font-semibold">Price ($) <span class="text-red-500">*</span></label>
-                <input type="number" name="price" step="0.01" required min="0" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['retail_price']); ?>">
+                <input type="number" name="price" step="0.01" required min="0" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['retailPrice'] ?? 0); ?>">
             </div>
             <div>
                 <label class="block mb-2 font-semibold">Stock Quantity <span class="text-red-500">*</span></label>
-                <input type="number" name="stock" required min="0" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['stock_quantity']); ?>">
+                <input type="number" name="stock" required min="0" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['totalQuantityInStock'] ?? 0); ?>">
             </div>
         </div>
 
@@ -176,11 +190,11 @@ $categories = getCategories();
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block mb-2 font-semibold">Item Size</label>
-                <input type="text" name="item_size" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['item_size'] ?? ''); ?>">
+                <input type="text" name="item_size" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['itemSize'] ?? ''); ?>">
             </div>
             <div>
                 <label class="block mb-2 font-semibold">Discount (%)</label>
-                <input type="number" name="discount_value" step="0.01" min="0" max="100" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['discount_value'] ?? 0); ?>">
+                <input type="number" name="discount_value" step="0.01" min="0" max="100" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['discount']['value'] ?? 0); ?>">
             </div>
         </div>
 
@@ -193,14 +207,14 @@ $categories = getCategories();
         <!-- Featured -->
         <div>
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="is_featured" value="1" <?php echo $product['is_featured'] ? 'checked' : ''; ?>>
+                <input type="checkbox" name="is_featured" value="1" <?php echo ($product['isFeatured'] ?? false) ? 'checked' : ''; ?>>
                 <span class="font-semibold">Mark as Featured Product</span>
             </label>
         </div>
 
         <!-- Buttons -->
         <div class="flex justify-center gap-4 pt-4">
-            <a href="products.php" class="px-6 py-2 rounded-md border border-gray-300 hover:bg-gray-100">
+            <a href="<?php echo BASE_PATH; ?>/dashboard/pages/products.php" class="px-6 py-2 rounded-md border border-gray-300 hover:bg-gray-100">
                 Cancel
             </a>
             <button type="submit" class="px-6 py-2 rounded-md bg-green-600 text-white hover:bg-green-700">

@@ -38,10 +38,14 @@ $cartCount = getCartCount();
             <?php else: ?>
                 <?php foreach ($cartItems as $item): ?>
                     <?php
-                    $discountPrice = ($item['retail_price'] ?? 0) - (($item['retail_price'] ?? 0) * (($item['discount_value'] ?? 0) / 100));
+                    // Use new schema fields: retailPrice + discount JSON
+                    $unitPrice = $item['retailPrice'] ?? 0;
+                    $discountPercent = $item['discount']['value'] ?? 0;
+                    $discountPrice = $unitPrice - ($unitPrice * $discountPercent / 100);
                     $image = !empty($item['images']) ? $item['images'][0] : imagePath('product.jpg');
                     $itemId = $item['id'];
-                    $itemType = isset($item['package_day']) ? 'package' : 'product';
+                    $itemType = $item['cart_type'] ?? 'product';
+                    $qty = $item['cart_quantity'] ?? 1;
                     ?>
                     <div class="flex gap-3 p-3 rounded-lg border">
                         <img src="<?php echo htmlspecialchars($image); ?>" alt="<?php echo htmlspecialchars($item['name']); ?>" class="w-16 h-16 object-cover rounded" />
@@ -49,20 +53,20 @@ $cartCount = getCartCount();
                             <div class="flex justify-between items-start">
                                 <div>
                                     <h4 class="font-semibold"><?php echo htmlspecialchars($item['name']); ?></h4>
-                                    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($item['item_size'] ?? ''); ?></p>
+                                    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($item['itemSize'] ?? ''); ?></p>
                                 </div>
                                 <span class="font-medium text-green-600">
-                                    $<?php echo number_format($discountPrice * ($item['cart_quantity'] ?? 1), 2); ?>
+                                    $<?php echo number_format($discountPrice * $qty, 2); ?>
                                 </span>
                             </div>
-                            <p class="text-xs text-gray-400"><?php echo htmlspecialchars($item['category_name'] ?? 'Package'); ?></p>
+                            <p class="text-xs text-gray-400"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></p>
                             
                             <!-- Quantity Controls -->
                             <div class="flex items-center gap-2 mt-2">
-                                <button onclick="updateCartQuantity(<?php echo $itemId; ?>, '<?php echo $itemType; ?>', -1)" class="px-2 py-1 border rounded hover:bg-gray-100">-</button>
-                                <span><?php echo $item['cart_quantity'] ?? 1; ?></span>
-                                <button onclick="updateCartQuantity(<?php echo $itemId; ?>, '<?php echo $itemType; ?>', 1)" class="px-2 py-1 border rounded hover:bg-gray-100">+</button>
-                                <button onclick="removeFromCart(<?php echo $itemId; ?>, '<?php echo $itemType; ?>')" class="ml-auto text-red-500 hover:text-red-700 text-sm">Remove</button>
+                                <button onclick="updateCartQuantity('<?php echo $itemId; ?>', '<?php echo $itemType; ?>', -1)" class="px-2 py-1 border rounded hover:bg-gray-100">-</button>
+                                <span><?php echo $qty; ?></span>
+                                <button onclick="updateCartQuantity('<?php echo $itemId; ?>', '<?php echo $itemType; ?>', 1)" class="px-2 py-1 border rounded hover:bg-gray-100">+</button>
+                                <button onclick="removeFromCart('<?php echo $itemId; ?>', '<?php echo $itemType; ?>')" class="ml-auto text-red-500 hover:text-red-700 text-sm">Remove</button>
                             </div>
                         </div>
                     </div>

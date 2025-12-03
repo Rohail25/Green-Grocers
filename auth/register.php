@@ -12,13 +12,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'email' => $_POST['email'] ?? '',
         'phone' => $_POST['phone'] ?? '',
         'password' => $_POST['password'] ?? '',
+        'confirmPassword' => $_POST['confirmPassword'] ?? '',
         'firstName' => $_POST['firstName'] ?? '',
         'lastName' => $_POST['lastName'] ?? '',
         'role' => $_POST['role'] ?? 'customer',
-        'platform' => 'trivemart'
+        'platform' => 'trivemart' // Match Node.js: platform required
     ];
     
-    if ($userData['password'] !== ($_POST['confirmPassword'] ?? '')) {
+    if ($userData['password'] !== $userData['confirmPassword']) {
         $error = 'Passwords do not match';
     } elseif (strlen($userData['password']) < 6) {
         $error = 'Password must be at least 6 characters long';
