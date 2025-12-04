@@ -69,13 +69,22 @@ elseif (strpos($currentPath, '/featured-products') !== false) $active = 'Feature
                     <input type="text" placeholder="Search here..." class="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                 </div>
 
-                <!-- Profile -->
-                <div class="flex items-center gap-2">
-                    <!-- <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Admin" class="w-16 h-16 rounded-md" /> -->
-                    <div class="hidden md:block">
-                        <p class="text-md font-semibold"><?php echo htmlspecialchars(getCurrentUser()['firstName'] ?? 'Admin'); ?></p>
-                        <p class="text-dm text-gray-500">Admin</p>
+                <!-- Profile & Logout -->
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <!-- <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Admin" class="w-16 h-16 rounded-md" /> -->
+                        <div class="hidden md:block">
+                            <p class="text-md font-semibold"><?php echo htmlspecialchars(getCurrentUser()['firstName'] ?? 'Admin'); ?></p>
+                            <p class="text-dm text-gray-500"><?php echo htmlspecialchars(getCurrentUser()['role'] ?? 'Admin'); ?></p>
+                        </div>
                     </div>
+                    <!-- Logout Button -->
+                    <a href="<?php echo BASE_PATH; ?>/includes/logout.php" class="flex items-center gap-2 px-2 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold" title="Logout">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                        <!-- <span class="hidden md:inline">Logout</span> -->
+                    </a>
                 </div>
             </div>
         </header>

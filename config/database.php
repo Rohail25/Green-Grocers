@@ -1,6 +1,9 @@
 <?php
 // Database Configuration
 define('DB_HOST', 'localhost');
+// define('DB_USER', 'zarifresh_green-grocers');
+// define('DB_PASS', 'U6tzCkdzWH%1d_?,');
+// define('DB_NAME', 'zarifresh_green-grocers');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_NAME', 'green_grocers');

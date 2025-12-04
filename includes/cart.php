@@ -62,7 +62,7 @@ function addToCart($productId, $quantity = 1, $type = 'product', $productData = 
     } else {
         // Get product data if not provided
         if (empty($productData)) {
-            $productStmt = $conn->prepare("SELECT name, images, retailPrice FROM products WHERE id = :id");
+            $productStmt = $conn->prepare("SELECT name, images, retailPrice, vendorId FROM products WHERE id = :id");
             $productStmt->execute([':id' => $productId]);
             $product = $productStmt->fetch(PDO::FETCH_ASSOC);
             
@@ -70,7 +70,8 @@ function addToCart($productId, $quantity = 1, $type = 'product', $productData = 
                 $productData = [
                     'productName' => $product['name'],
                     'productImage' => !empty($product['images']) ? json_decode($product['images'], true)[0] ?? '' : '',
-                    'price' => (float)$product['retailPrice']
+                    'price' => (float)$product['retailPrice'],
+                    'vendorId' => $product['vendorId'] ?? null
                 ];
             }
         }
@@ -258,7 +259,7 @@ function getCartItems() {
                 $result[] = $package;
             }
         } else {
-            // Fetch product details
+            // Fetch product details including vendorId
             $stmt = $conn->prepare("
                 SELECT p.*, c.title as category_name 
                 FROM products p 
@@ -275,6 +276,7 @@ function getCartItems() {
                 $product['variants'] = !empty($product['variants']) ? json_decode($product['variants'], true) : [];
                 $product['cart_quantity'] = $item['quantity'] ?? 1;
                 $product['cart_type'] = 'product';
+                // vendorId is already included from the SELECT query above
                 $result[] = $product;
             }
         }

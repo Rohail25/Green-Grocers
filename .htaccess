@@ -1,17 +1,13 @@
+# Enable Rewrite Engine
 RewriteEngine On
 
-# Base path for this project
-RewriteBase /green-grocers/
+# Don't rewrite requests for existing files or directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
 
-# Allow direct access to public folder files
-RewriteCond %{REQUEST_URI} ^/green-grocers/public/ [OR]
-RewriteCond %{REQUEST_URI} ^/public/
-RewriteRule ^ - [L]
+# Don't rewrite requests for public folder
+RewriteCond %{REQUEST_URI} !^/green-grocers/public/
 
-# If the request is already a real file or directory, serve it directly
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
+# Route all other requests to index.php
+RewriteRule ^(.*)$ index.php [QSA,L]
 
-# Otherwise, route everything through index.php (keeps query string)
-RewriteRule ^ index.php [L,QSA]

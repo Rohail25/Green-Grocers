@@ -55,7 +55,10 @@ $orders = getAllOrders();
                         <td class="px-4 py-2">$<?php echo number_format($totalAmount, 2); ?></td>
                         <td class="px-4 py-2"><?php echo htmlspecialchars($order['status']); ?></td>
                         <td class="px-4 py-2">
-                            <button onclick="openModal('<?php echo $order['id']; ?>', '<?php echo htmlspecialchars($order['status']); ?>')" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700">Update</button>
+                            <div class="flex gap-2">
+                                <button onclick="openViewModal('<?php echo $order['id']; ?>')" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700">View</button>
+                                <button onclick="openModal('<?php echo $order['id']; ?>', '<?php echo htmlspecialchars($order['status']); ?>')" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700">Update</button>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -88,7 +91,193 @@ $orders = getAllOrders();
     </div>
 </div>
 
+<!-- View Order Details Modal -->
+<div id="viewModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-4" onclick="closeViewModalOnBackdrop(event)">
+    <div class="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col relative my-8" onclick="event.stopPropagation()">
+        <!-- Header - Fixed -->
+        <div class="flex-shrink-0 px-6 pt-6 pb-4 border-b">
+            <div class="flex items-center justify-between">
+                <h2 class="text-2xl font-bold">Order Details</h2>
+                <button onclick="closeViewModal()" class="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" title="Close">✕</button>
+            </div>
+        </div>
+        
+        <!-- Content - Scrollable -->
+        <div id="viewModalContent" class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+            <div class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                <p class="mt-2 text-gray-600">Loading order details...</p>
+            </div>
+        </div>
+        
+        <!-- Footer - Fixed -->
+        <div class="flex-shrink-0 px-6 py-4 border-t bg-gray-50 flex justify-center">
+            <button onclick="closeViewModal()" class="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
+function openViewModal(orderId) {
+    document.getElementById('viewModal').classList.remove('hidden');
+    
+    // Fetch order details via AJAX
+    fetch('<?php echo BASE_PATH; ?>/dashboard/pages/get-order-details.php?order_id=' + encodeURIComponent(orderId))
+        .then(response => response.json())
+        .then(order => {
+            if (order.error) {
+                document.getElementById('viewModalContent').innerHTML = '<p class="text-red-600 text-center py-8">' + order.error + '</p>';
+                return;
+            }
+            
+            // Format shipping address
+            const shippingAddress = order.shippingAddress || {};
+            const addressText = shippingAddress.street || 'Not provided';
+            const phone = shippingAddress.phone || order.email || 'Not provided';
+            const notes = shippingAddress.notes || order.notes || 'None';
+            
+            // Format order items
+            const items = order.items || [];
+            let itemsHtml = '';
+            if (items.length > 0) {
+                itemsHtml = '<div class="space-y-2">';
+                items.forEach(item => {
+                    const itemName = item.productName || item.name || 'Unknown Product';
+                    const itemImage = item.productImage || (item.images && item.images[0]) || '';
+                    const quantity = item.quantity || item.cart_quantity || 1;
+                    const price = item.price || 0;
+                    const total = price * quantity;
+                    
+                    itemsHtml += `
+                        <div class="flex items-center gap-4 p-3 border rounded-md">
+                            ${itemImage ? `<img src="${itemImage}" alt="${itemName}" class="w-16 h-16 object-cover rounded">` : '<div class="w-16 h-16 bg-gray-200 rounded"></div>'}
+                            <div class="flex-1">
+                                <h4 class="font-semibold">${itemName}</h4>
+                                <p class="text-sm text-gray-600">Quantity: ${quantity}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-semibold">$${parseFloat(price).toFixed(2)}</p>
+                                <p class="text-sm text-gray-600">Total: $${parseFloat(total).toFixed(2)}</p>
+                            </div>
+                        </div>
+                    `;
+                });
+                itemsHtml += '</div>';
+            } else {
+                itemsHtml = '<p class="text-gray-500">No items found</p>';
+            }
+            
+            // Format payment method
+            const paymentMethod = order.paymentMethod || 'Not specified';
+            const paymentStatus = order.paymentStatus || 'PENDING';
+            const transactionId = order.transactionId || 'N/A';
+            
+            // Format dates
+            const orderDate = order.created_at ? new Date(order.created_at).toLocaleString() : 'N/A';
+            const updatedDate = order.updated_at ? new Date(order.updated_at).toLocaleString() : 'N/A';
+            
+            // Build modal content
+            const content = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Customer Information -->
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h3 class="font-bold text-lg mb-3 text-green-600">Customer Information</h3>
+                        <div class="space-y-2">
+                            <p><span class="font-semibold">Name:</span> ${order.customerName || (order.firstName + ' ' + order.lastName) || 'N/A'}</p>
+                            <p><span class="font-semibold">Email:</span> ${order.email || 'N/A'}</p>
+                            <p><span class="font-semibold">Phone:</span> ${phone}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Shipping Address -->
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h3 class="font-bold text-lg mb-3 text-green-600">Shipping Address</h3>
+                        <div class="space-y-2">
+                            <p><span class="font-semibold">Address:</span></p>
+                            <p class="text-gray-700 break-words">${addressText}</p>
+                            <p><span class="font-semibold">Delivery Notes:</span> ${notes}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Order Information -->
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h3 class="font-bold text-lg mb-3 text-green-600">Order Information</h3>
+                        <div class="space-y-2">
+                            <p><span class="font-semibold">Order ID:</span> <span class="text-sm break-all">${order.id || 'N/A'}</span></p>
+                            <p><span class="font-semibold">Order Date:</span> ${orderDate}</p>
+                            <p><span class="font-semibold">Last Updated:</span> ${updatedDate}</p>
+                            <p><span class="font-semibold">Status:</span> <span class="px-2 py-1 bg-green-100 text-green-800 rounded">${order.status || 'N/A'}</span></p>
+                        </div>
+                    </div>
+                    
+                    <!-- Payment Information -->
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h3 class="font-bold text-lg mb-3 text-green-600">Payment Information</h3>
+                        <div class="space-y-2">
+                            <p><span class="font-semibold">Payment Method:</span> ${paymentMethod}</p>
+                            <p><span class="font-semibold">Payment Status:</span> <span class="px-2 py-1 ${paymentStatus === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'} rounded">${paymentStatus}</span></p>
+                            <p><span class="font-semibold">Transaction ID:</span> <span class="text-sm text-gray-600 break-all">${transactionId}</span></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Order Items -->
+                <div class="mt-6">
+                    <h3 class="font-bold text-lg mb-3 text-green-600">Order Items</h3>
+                    ${itemsHtml}
+                </div>
+                
+                <!-- Order Summary -->
+                <div class="mt-6 bg-green-50 p-4 rounded-lg">
+                    <h3 class="font-bold text-lg mb-3 text-green-600">Order Summary</h3>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div class="space-y-1">
+                            <p><span class="font-semibold">Subtotal:</span> $${parseFloat(order.totalAmount - (order.discountAmount || 0)).toFixed(2)}</p>
+                            ${order.discountAmount > 0 ? `<p><span class="font-semibold">Discount:</span> -$${parseFloat(order.discountAmount).toFixed(2)}</p>` : ''}
+                            ${order.couponCode ? `<p><span class="font-semibold">Coupon Code:</span> ${order.couponCode}</p>` : ''}
+                        </div>
+                        <div class="text-right">
+                            <p class="text-2xl font-bold text-green-600">Total: $${parseFloat(order.totalAmount || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('viewModalContent').innerHTML = content;
+        })
+        .catch(error => {
+            document.getElementById('viewModalContent').innerHTML = '<p class="text-red-600 text-center py-8">Error loading order details: ' + error.message + '</p>';
+        });
+}
+
+function closeViewModal() {
+    document.getElementById('viewModal').classList.add('hidden');
+    // Clear modal content when closing
+    document.getElementById('viewModalContent').innerHTML = `
+        <div class="text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+            <p class="mt-2 text-gray-600">Loading order details...</p>
+        </div>
+    `;
+}
+
+function closeViewModalOnBackdrop(event) {
+    // Close modal if clicking on the backdrop (not on the modal content)
+    if (event.target.id === 'viewModal') {
+        closeViewModal();
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        const viewModal = document.getElementById('viewModal');
+        if (!viewModal.classList.contains('hidden')) {
+            closeViewModal();
+        }
+    }
+});
+
 function openModal(orderId, currentStatus) {
     document.getElementById('order_id').value = orderId;
     document.querySelectorAll('input[name="status"]').forEach(radio => {

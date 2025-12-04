@@ -5,18 +5,45 @@
  * Usage: Run this file to seed the database with test users
  * 
  * This seeder creates:
- * - Trivestore users (with vendorId)
- * - Trivemart users (with clientId)
- * - Admin users
- * - Logistic users
- * - Vendor users
+ * - Vendor users (with vendorId) - Gmail
+ * - Customer users (with clientId) - Gmail
+ * - Admin users - Gmail
+ * - Logistic users - Gmail
  */
 
 require_once __DIR__ . '/../../config/database.php';
 
 echo "🌱 Starting User Seeder...\n\n";
 
-$conn = getDBConnection();
+// Test database connection
+try {
+    $conn = getDBConnection();
+    echo "✅ Database connection successful\n";
+    echo "📊 Database: " . DB_NAME . "\n";
+    
+    // Check if users table exists
+    $tableCheck = $conn->query("SHOW TABLES LIKE 'users'");
+    if ($tableCheck->rowCount() == 0) {
+        echo "❌ ERROR: 'users' table does not exist in database!\n";
+        echo "   Please create the users table first.\n";
+        exit(1);
+    }
+    echo "✅ Users table exists\n\n";
+} catch (Exception $e) {
+    echo "❌ Database connection failed: " . $e->getMessage() . "\n";
+    exit(1);
+}
+
+// Function to generate UUID (for user ID)
+function generateUUID() {
+    return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0x0fff) | 0x4000,
+        mt_rand(0, 0x3fff) | 0x8000,
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+    );
+}
 
 // Function to generate vendorId/clientId (same as in auth.php)
 function generateVendorId() {
@@ -29,105 +56,39 @@ function generateClientId() {
 
 // Test users data - Passwords will be hashed during insertion
 $users = [
-    // Trivestore Users (with vendorId)
+    // Vendor Users (with vendorId) - Gmail
+  
     [
-        'email' => 'vendor1@trivestore.com',
-        'phone' => '+1234567890',
-        'password' => 'password123', // Plain password - will be hashed
-        'firstName' => 'John',
-        'lastName' => 'Vendor',
-        'role' => 'vendor',
-        'platform' => 'trivestore',
-        'vendorId' => generateVendorId(),
-        'clientId' => null,
-        'isEmailConfirmed' => true,
-        'isVerified' => true,
-    ],
-    [
-        'email' => 'vendor2@trivestore.com',
+        'email' => 'vendor@gmail.com',
         'phone' => '+1234567891',
         'password' => 'password123',
         'firstName' => 'Jane',
         'lastName' => 'Store',
         'role' => 'vendor',
-        'platform' => 'trivestore',
+        'platform' => 'trivemart',
         'vendorId' => generateVendorId(),
         'clientId' => null,
         'isEmailConfirmed' => true,
         'isVerified' => true,
     ],
+    
+    // Customer Users (with clientId) - Gmail
     [
-        'email' => 'customer1@trivestore.com',
+        'email' => 'customer@gmail.com',
         'phone' => '+1234567892',
         'password' => 'password123',
         'firstName' => 'Bob',
         'lastName' => 'Customer',
         'role' => 'customer',
-        'platform' => 'trivestore',
-        'vendorId' => generateVendorId(),
-        'clientId' => null,
+        'platform' => 'trivemart',
+        'vendorId' => null,
+        'clientId' => generateClientId(),
         'isEmailConfirmed' => true,
         'isVerified' => true,
     ],
+   
     
-    // Trivemart Users (with clientId)
-    [
-        'email' => 'client1@trivemart.com',
-        'phone' => '+1234567893',
-        'password' => 'password123',
-        'firstName' => 'Alice',
-        'lastName' => 'Client',
-        'role' => 'customer',
-        'platform' => 'trivemart',
-        'vendorId' => null,
-        'clientId' => generateClientId(),
-        'isEmailConfirmed' => true,
-        'isVerified' => true,
-    ],
-    [
-        'email' => 'client2@trivemart.com',
-        'phone' => '+1234567894',
-        'password' => 'password123',
-        'firstName' => 'Charlie',
-        'lastName' => 'Mart',
-        'role' => 'customer',
-        'platform' => 'trivemart',
-        'vendorId' => null,
-        'clientId' => generateClientId(),
-        'isEmailConfirmed' => true,
-        'isVerified' => true,
-    ],
-    
-    // Admin Users
-    [
-        'email' => 'admin@green-grocers.com',
-        'phone' => '+1234567895',
-        'password' => 'admin123',
-        'firstName' => 'Admin',
-        'lastName' => 'User',
-        'role' => 'admin',
-        'platform' => 'trivemart',
-        'vendorId' => null,
-        'clientId' => generateClientId(),
-        'isEmailConfirmed' => true,
-        'isVerified' => true,
-    ],
-    
-    // Logistic Users
-    [
-        'email' => 'logistic1@green-grocers.com',
-        'phone' => '+1234567896',
-        'password' => 'password123',
-        'firstName' => 'Logistic',
-        'lastName' => 'Driver',
-        'role' => 'logistic',
-        'platform' => 'trivemart',
-        'vendorId' => null,
-        'clientId' => generateClientId(),
-        'isEmailConfirmed' => true,
-        'isVerified' => false, // Logistic needs admin approval
-        'documentsUploaded' => true,
-    ],
+
 ];
 
 // Insert users
@@ -153,6 +114,9 @@ foreach ($users as $userData) {
         // Hash password (same method as in auth.php)
         $hashedPassword = password_hash($userData['password'], PASSWORD_DEFAULT);
         
+        // Generate UUID for user ID
+        $userId = generateUUID();
+        
         // Insert user
         $stmt = $conn->prepare("
             INSERT INTO users (
@@ -161,14 +125,15 @@ foreach ($users as $userData) {
                 verificationDocuments, preferredVendors, addresses,
                 documentsUploaded, created_at, updated_at
             ) VALUES (
-                UUID(), :email, :phone, :password, :firstName, :lastName, :role, :platform,
+                :id, :email, :phone, :password, :firstName, :lastName, :role, :platform,
                 :vendorId, :clientId, :isEmailConfirmed, :isVerified,
                 '[]', '[]', '[]',
                 :documentsUploaded, NOW(), NOW()
             )
         ");
         
-        $stmt->execute([
+        $result = $stmt->execute([
+            ':id' => $userId,
             ':email' => strtolower(trim($userData['email'])),
             ':phone' => $userData['phone'],
             ':password' => $hashedPassword,
@@ -183,6 +148,10 @@ foreach ($users as $userData) {
             ':documentsUploaded' => isset($userData['documentsUploaded']) ? ($userData['documentsUploaded'] ? 1 : 0) : 0,
         ]);
         
+        if (!$result) {
+            throw new Exception("Insert failed for {$userData['email']}");
+        }
+        
         $inserted++;
         $vendorIdDisplay = $userData['vendorId'] ? " | Vendor ID: {$userData['vendorId']}" : '';
         $clientIdDisplay = $userData['clientId'] ? " | Client ID: {$userData['clientId']}" : '';
@@ -190,6 +159,14 @@ foreach ($users as $userData) {
         echo "✅ Created: {$userData['email']} ({$userData['platform']}){$vendorIdDisplay}{$clientIdDisplay}\n";
         
     } catch (PDOException $e) {
+        $errorMsg = "❌ Error creating {$userData['email']}: " . $e->getMessage();
+        echo $errorMsg . "\n";
+        echo "   SQL Error Code: " . $e->getCode() . "\n";
+        if ($stmt->errorInfo()) {
+            echo "   SQL Error Info: " . print_r($stmt->errorInfo(), true) . "\n";
+        }
+        $errors[] = $errorMsg;
+    } catch (Exception $e) {
         $errorMsg = "❌ Error creating {$userData['email']}: " . $e->getMessage();
         echo $errorMsg . "\n";
         $errors[] = $errorMsg;
@@ -219,10 +196,8 @@ echo str_repeat("=", 60) . "\n";
 $displayStmt = $conn->query("
     SELECT email, platform, role, vendorId, clientId, isEmailConfirmed 
     FROM users 
-    WHERE email LIKE '%@trivestore.com' 
-       OR email LIKE '%@trivemart.com' 
-       OR email LIKE '%@green-grocers.com'
-    ORDER BY platform, role
+    WHERE email LIKE '%@gmail.com'
+    ORDER BY role, email
 ");
 
 $displayUsers = $displayStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -248,8 +223,9 @@ foreach ($displayUsers as $user) {
 
 echo "\n✅ Seeder completed!\n";
 echo "\n💡 Test Login Credentials:\n";
-echo "   - Admin: admin@green-grocers.com / admin123 (Platform: trivemart)\n";
-echo "   - Vendor: vendor1@trivestore.com / password123 (Platform: trivestore)\n";
-echo "   - Customer: client1@trivemart.com / password123 (Platform: trivemart)\n";
-echo "\n⚠️  IMPORTANT: Make sure to select the correct platform when logging in!\n";
+echo "   - Admin: admin@gmail.com / admin123 (Platform: trivemart)\n";
+echo "   - Vendor: vendor1@gmail.com / password123 (Platform: trivemart)\n";
+echo "   - Customer: customer1@gmail.com / password123 (Platform: trivemart)\n";
+echo "   - Logistic: logistic1@gmail.com / password123 (Platform: trivemart)\n";
+echo "\n⚠️  IMPORTANT: All users use trivemart platform with gmail.com emails!\n";
 ?>

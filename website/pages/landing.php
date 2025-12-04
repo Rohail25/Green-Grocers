@@ -44,11 +44,15 @@ $featuredPackages = getFeaturedPackages(6);
                 </button>
             </div>
         </div>
-        <div id="categories-scroll" class="flex gap-6 overflow-x-auto no-scrollbar">
+        <div id="categories-scroll" class="flex flex-wrap justify-center gap-10 md:gap-16">
             <?php foreach ($categories as $cat): ?>
-                <a href="<?php echo BASE_PATH; ?>/category?name=<?php echo urlencode($cat['title']); ?>" class="text-center flex-shrink-0 w-28 cursor-pointer">
-                    <img src="<?php echo imagePath(basename($cat['image'])); ?>" alt="<?php echo htmlspecialchars($cat['title']); ?>" class="w-20 h-20 object-cover rounded-full mx-auto mb-2 shadow" />
-                    <p class="text-sm font-medium"><?php echo htmlspecialchars($cat['title']); ?></p>
+                <a href="<?php echo BASE_PATH; ?>/category?name=<?php echo urlencode($cat['title']); ?>" class="text-center flex-shrink-0 w-28 md:w-32 cursor-pointer flex flex-col items-center gap-3">
+                    <?php 
+                    // Use full image path if available, otherwise use basename for backward compatibility
+                    $imgPath = !empty($cat['image']) ? imagePath($cat['image']) : imagePath('category.jpg');
+                    ?>
+                    <img src="<?php echo $imgPath; ?>" alt="<?php echo htmlspecialchars($cat['title']); ?>" class="w-20 h-20 md:w-24 md:h-24 object-cover rounded-full mx-auto shadow-lg border border-gray-100" />
+                    <p class="text-sm font-semibold text-gray-800"><?php echo htmlspecialchars($cat['title']); ?></p>
                 </a>
             <?php endforeach; ?>
         </div>

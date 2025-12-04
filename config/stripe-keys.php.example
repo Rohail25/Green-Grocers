@@ -1,0 +1,22 @@
+<?php
+/**
+ * Stripe API Keys Configuration Template
+ * 
+ * INSTRUCTIONS:
+ * 1. Copy this file and rename it to: stripe-keys.php
+ * 2. Replace the placeholder keys with your actual Stripe keys
+ * 3. Get your keys from: https://dashboard.stripe.com/apikeys
+ * 
+ * IMPORTANT SECURITY NOTES:
+ * - NEVER commit stripe-keys.php to version control
+ * - Keep this file secure and private
+ * - Use test keys (pk_test_/sk_test_) for development
+ * - Use live keys (pk_live_/sk_live_) for production
+ */
+
+// Stripe Secret Key (Server-side only - NEVER expose in frontend)
+define('STRIPE_SECRET_KEY', 'YOUR_SECRET_KEY_HERE');
+
+// Stripe Publishable Key (Safe to use in frontend/browser)
+define('STRIPE_PUBLISHABLE_KEY', 'YOUR_PUBLISHABLE_KEY_HERE');
+
