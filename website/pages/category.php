@@ -56,7 +56,10 @@ $pageTitle = $category['heading'] . ' - Green Grocers';
                     <div class="mt-4">
                         <p class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($product['name']); ?> <span class="text-gray-500">(<?php echo htmlspecialchars($product['item_size'] ?? ''); ?>)</span></p>
                         <div class="mt-2 flex items-center gap-3">
-                            <p class="text-lg font-bold text-black">$<?php echo number_format($discountPrice, 2); ?></p>
+                            <div>
+                                <p class="text-lg font-bold text-black">$<?php echo number_format($discountPrice, 2); ?></p>
+                                <p class="text-xs text-gray-500"><?php echo htmlspecialchars($product['priceUnit'] ?? 'Per Each'); ?></p>
+                            </div>
                             <p class="text-sm line-through text-gray-500">$<?php echo number_format($product['retail_price'], 2); ?></p>
                         </div>
                         <form method="POST" action="<?php echo BASE_PATH; ?>/includes/cart-action.php" class="mt-4">

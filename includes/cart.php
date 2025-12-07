@@ -1,17 +1,39 @@
 <?php
-// Cart Management Functions - Matching Node.js Backend Flow (Database-based cart)
+// Cart Management Functions - Supporting both session-based (guests) and database-based (authenticated users) carts
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+/**
+ * Get session cart for guests
+ */
+function getSessionCart() {
+    return $_SESSION['guest_cart'] ?? ['items' => [], 'totalPrice' => 0];
+}
+
+/**
+ * Save session cart for guests
+ */
+function saveSessionCart($cart) {
+    $_SESSION['guest_cart'] = $cart;
+}
+
+/**
+ * Get cart - supports both session (guests) and database (authenticated users)
+ */
 function getCart($userId = null) {
-    // Match Node.js: use database cart, not session
     if (!$userId) {
         $user = getCurrentUser();
         $userId = $user['id'] ?? null;
     }
     
+    // If not authenticated, use session cart
     if (!$userId) {
-        return ['items' => [], 'totalPrice' => 0];
+        return getSessionCart();
     }
     
+    // Authenticated users: use database cart
     $conn = getDBConnection();
     $stmt = $conn->prepare("SELECT * FROM carts WHERE userId = :userId");
     $stmt->execute([':userId' => $userId]);
@@ -21,23 +43,97 @@ function getCart($userId = null) {
         return ['items' => [], 'totalPrice' => 0];
     }
     
-    // Match Node.js: parse items JSON
+    // Parse items JSON
     $cart['items'] = !empty($cart['items']) ? json_decode($cart['items'], true) : [];
     
     return $cart;
 }
 
+/**
+ * Add item to cart - supports both session and database
+ */
 function addToCart($productId, $quantity = 1, $type = 'product', $productData = []) {
-    // Match Node.js: requires userId
     $user = getCurrentUser();
-    if (!$user || !isset($user['id'])) {
-        return ['success' => false, 'message' => 'User must be logged in'];
+    $isAuthenticated = $user && isset($user['id']);
+    
+    // For guests, use session cart
+    if (!$isAuthenticated) {
+        $cart = getSessionCart();
+        $items = $cart['items'] ?? [];
+        
+        // Check if item exists (match by productId and type)
+        $existingIndex = -1;
+        foreach ($items as $index => $item) {
+            if (($item['productId'] ?? '') === $productId && (($item['type'] ?? 'product') === $type)) {
+                $existingIndex = $index;
+                break;
+            }
+        }
+        
+        // Add or update item
+        if ($existingIndex !== -1) {
+            $items[$existingIndex]['quantity'] += $quantity;
+        } else {
+            // Ensure productData is provided
+            if (empty($productData)) {
+                $conn = getDBConnection();
+                if ($type === 'product') {
+                    $productStmt = $conn->prepare("SELECT name, images, retailPrice, vendorId FROM products WHERE id = :id");
+                    $productStmt->execute([':id' => $productId]);
+                    $product = $productStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($product) {
+                        $productData = [
+                            'productName' => $product['name'],
+                            'productImage' => !empty($product['images']) ? json_decode($product['images'], true)[0] ?? '' : '',
+                            'price' => (float)$product['retailPrice'],
+                            'vendorId' => $product['vendorId'] ?? null
+                        ];
+                    }
+                } elseif ($type === 'package') {
+                    $packageStmt = $conn->prepare("SELECT name, image, retailPrice FROM packages WHERE id = :id");
+                    $packageStmt->execute([':id' => $productId]);
+                    $package = $packageStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($package) {
+                        $productData = [
+                            'productName' => $package['name'],
+                            'productImage' => $package['image'] ?? '',
+                            'price' => (float)$package['retailPrice']
+                        ];
+                    }
+                }
+            }
+            
+            $items[] = [
+                'productId' => $productId,
+                'type' => $type,
+                'productName' => $productData['productName'] ?? '',
+                'productImage' => $productData['productImage'] ?? '',
+                'price' => (float)($productData['price'] ?? 0),
+                'quantity' => $quantity,
+                'vendorId' => $productData['vendorId'] ?? null,
+                'variantIndex' => $productData['variantIndex'] ?? 0
+            ];
+        }
+        
+        // Calculate total price
+        $totalPrice = 0;
+        foreach ($items as $item) {
+            $totalPrice += (float)$item['price'] * (int)$item['quantity'];
+        }
+        
+        // Save to session
+        saveSessionCart(['items' => $items, 'totalPrice' => $totalPrice]);
+        
+        return ['success' => true, 'message' => 'Item added to cart'];
     }
     
+    // For authenticated users, use database cart
     $userId = $user['id'];
     $conn = getDBConnection();
     
-    // Match Node.js: get or create cart
+    // Get or create cart
     $stmt = $conn->prepare("SELECT * FROM carts WHERE userId = :userId");
     $stmt->execute([':userId' => $userId]);
     $cart = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -47,7 +143,7 @@ function addToCart($productId, $quantity = 1, $type = 'product', $productData = 
         $items = !empty($cart['items']) ? json_decode($cart['items'], true) : [];
     }
     
-    // Match Node.js: check if item exists (match by productId and type)
+    // Check if item exists (match by productId and type)
     $existingIndex = -1;
     foreach ($items as $index => $item) {
         if (($item['productId'] ?? '') === $productId && (($item['type'] ?? 'product') === $type)) {
@@ -56,23 +152,37 @@ function addToCart($productId, $quantity = 1, $type = 'product', $productData = 
         }
     }
     
-    // Match Node.js: add or update item
+    // Add or update item
     if ($existingIndex !== -1) {
         $items[$existingIndex]['quantity'] += $quantity;
     } else {
         // Get product data if not provided
         if (empty($productData)) {
-            $productStmt = $conn->prepare("SELECT name, images, retailPrice, vendorId FROM products WHERE id = :id");
-            $productStmt->execute([':id' => $productId]);
-            $product = $productStmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($product) {
-                $productData = [
-                    'productName' => $product['name'],
-                    'productImage' => !empty($product['images']) ? json_decode($product['images'], true)[0] ?? '' : '',
-                    'price' => (float)$product['retailPrice'],
-                    'vendorId' => $product['vendorId'] ?? null
-                ];
+            if ($type === 'product') {
+                $productStmt = $conn->prepare("SELECT name, images, retailPrice, vendorId FROM products WHERE id = :id");
+                $productStmt->execute([':id' => $productId]);
+                $product = $productStmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($product) {
+                    $productData = [
+                        'productName' => $product['name'],
+                        'productImage' => !empty($product['images']) ? json_decode($product['images'], true)[0] ?? '' : '',
+                        'price' => (float)$product['retailPrice'],
+                        'vendorId' => $product['vendorId'] ?? null
+                    ];
+                }
+            } elseif ($type === 'package') {
+                $packageStmt = $conn->prepare("SELECT name, image, retailPrice FROM packages WHERE id = :id");
+                $packageStmt->execute([':id' => $productId]);
+                $package = $packageStmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($package) {
+                    $productData = [
+                        'productName' => $package['name'],
+                        'productImage' => $package['image'] ?? '',
+                        'price' => (float)$package['retailPrice']
+                    ];
+                }
             }
         }
         
@@ -88,13 +198,13 @@ function addToCart($productId, $quantity = 1, $type = 'product', $productData = 
         ];
     }
     
-    // Match Node.js: calculate total price
+    // Calculate total price
     $totalPrice = 0;
     foreach ($items as $item) {
         $totalPrice += (float)$item['price'] * (int)$item['quantity'];
     }
     
-    // Match Node.js: update or create cart
+    // Update or create cart
     if ($cart) {
         $stmt = $conn->prepare("UPDATE carts SET items = :items, totalPrice = :totalPrice, updated_at = NOW() WHERE userId = :userId");
         $stmt->execute([
@@ -114,16 +224,41 @@ function addToCart($productId, $quantity = 1, $type = 'product', $productData = 
     return ['success' => true, 'message' => 'Item added to cart'];
 }
 
+/**
+ * Remove item from cart - supports both session and database
+ */
 function removeFromCart($productId, $type = 'product') {
     $user = getCurrentUser();
-    if (!$user || !isset($user['id'])) {
-        return ['success' => false, 'message' => 'User must be logged in'];
+    $isAuthenticated = $user && isset($user['id']);
+    
+    // For guests, use session cart
+    if (!$isAuthenticated) {
+        $cart = getSessionCart();
+        $items = $cart['items'] ?? [];
+        
+        // Filter out item (match by productId and type)
+        $items = array_filter($items, function($item) use ($productId, $type) {
+            return !(($item['productId'] ?? '') === $productId && (($item['type'] ?? 'product') === $type));
+        });
+        $items = array_values($items);
+        
+        // Recalculate total
+        $totalPrice = 0;
+        foreach ($items as $item) {
+            $totalPrice += (float)$item['price'] * (int)$item['quantity'];
+        }
+        
+        // Save to session
+        saveSessionCart(['items' => $items, 'totalPrice' => $totalPrice]);
+        
+        return ['success' => true, 'message' => 'Item removed from cart'];
     }
     
+    // For authenticated users, use database cart
     $userId = $user['id'];
     $conn = getDBConnection();
     
-    // Match Node.js: get cart
+    // Get cart
     $stmt = $conn->prepare("SELECT * FROM carts WHERE userId = :userId");
     $stmt->execute([':userId' => $userId]);
     $cart = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -132,10 +267,10 @@ function removeFromCart($productId, $type = 'product') {
         return ['success' => false, 'message' => 'Cart not found'];
     }
     
-    // Match Node.js: filter out item
+    // Filter out item (match by productId and type)
     $items = !empty($cart['items']) ? json_decode($cart['items'], true) : [];
-    $items = array_filter($items, function($item) use ($productId) {
-        return $item['productId'] !== $productId;
+    $items = array_filter($items, function($item) use ($productId, $type) {
+        return !(($item['productId'] ?? '') === $productId && (($item['type'] ?? 'product') === $type));
     });
     $items = array_values($items);
     
@@ -155,16 +290,54 @@ function removeFromCart($productId, $type = 'product') {
     return ['success' => true, 'message' => 'Item removed from cart'];
 }
 
+/**
+ * Update cart quantity - supports both session and database
+ */
 function updateCartQuantity($productId, $quantity, $type = 'product') {
     $user = getCurrentUser();
-    if (!$user || !isset($user['id'])) {
-        return ['success' => false, 'message' => 'User must be logged in'];
+    $isAuthenticated = $user && isset($user['id']);
+    
+    // For guests, use session cart
+    if (!$isAuthenticated) {
+        $cart = getSessionCart();
+        $items = $cart['items'] ?? [];
+        
+        $itemIndex = -1;
+        foreach ($items as $index => $item) {
+            if (($item['productId'] ?? '') === $productId && (($item['type'] ?? 'product') === $type)) {
+                $itemIndex = $index;
+                break;
+            }
+        }
+        
+        if ($itemIndex === -1) {
+            return ['success' => false, 'message' => 'Item not found in cart'];
+        }
+        
+        if ($quantity <= 0) {
+            return removeFromCart($productId, $type);
+        }
+        
+        // Update quantity
+        $items[$itemIndex]['quantity'] = $quantity;
+        
+        // Recalculate total
+        $totalPrice = 0;
+        foreach ($items as $item) {
+            $totalPrice += (float)$item['price'] * (int)$item['quantity'];
+        }
+        
+        // Save to session
+        saveSessionCart(['items' => $items, 'totalPrice' => $totalPrice]);
+        
+        return ['success' => true, 'message' => 'Cart item updated'];
     }
     
+    // For authenticated users, use database cart
     $userId = $user['id'];
     $conn = getDBConnection();
     
-    // Match Node.js: get cart
+    // Get cart
     $stmt = $conn->prepare("SELECT * FROM carts WHERE userId = :userId");
     $stmt->execute([':userId' => $userId]);
     $cart = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -177,7 +350,7 @@ function updateCartQuantity($productId, $quantity, $type = 'product') {
     $itemIndex = -1;
     
     foreach ($items as $index => $item) {
-        if ($item['productId'] === $productId) {
+        if (($item['productId'] ?? '') === $productId && (($item['type'] ?? 'product') === $type)) {
             $itemIndex = $index;
             break;
         }
@@ -191,7 +364,7 @@ function updateCartQuantity($productId, $quantity, $type = 'product') {
         return removeFromCart($productId, $type);
     }
     
-    // Match Node.js: update quantity
+    // Update quantity
     $items[$itemIndex]['quantity'] = $quantity;
     
     // Recalculate total
@@ -210,34 +383,43 @@ function updateCartQuantity($productId, $quantity, $type = 'product') {
     return ['success' => true, 'message' => 'Cart item updated'];
 }
 
+/**
+ * Clear cart - supports both session and database
+ */
 function clearCart() {
     $user = getCurrentUser();
-    if (!$user || !isset($user['id'])) {
-        return ['success' => false, 'message' => 'User must be logged in'];
+    $isAuthenticated = $user && isset($user['id']);
+    
+    // For guests, clear session cart
+    if (!$isAuthenticated) {
+        saveSessionCart(['items' => [], 'totalPrice' => 0]);
+        return ['success' => true, 'message' => 'Cart cleared'];
     }
     
+    // For authenticated users, clear database cart
     $userId = $user['id'];
     $conn = getDBConnection();
     
-    // Match Node.js: clear cart items
     $stmt = $conn->prepare("UPDATE carts SET items = '[]', totalPrice = 0, updated_at = NOW() WHERE userId = :userId");
     $stmt->execute([':userId' => $userId]);
     
     return ['success' => true, 'message' => 'Cart cleared'];
 }
 
+/**
+ * Get cart items with product details - supports both session and database
+ */
 function getCartItems() {
-    $user = getCurrentUser();
-    if (!$user || !isset($user['id'])) {
+    $cart = getCart();
+    $items = $cart['items'] ?? [];
+    
+    if (empty($items)) {
         return [];
     }
     
-    $cart = getCart($user['id']);
-    $items = $cart['items'] ?? [];
     $result = [];
-    
-    // Match Node.js: fetch product details for each cart item
     $conn = getDBConnection();
+    
     foreach ($items as $item) {
         $productId = $item['productId'] ?? '';
         if (empty($productId)) continue;
@@ -276,7 +458,6 @@ function getCartItems() {
                 $product['variants'] = !empty($product['variants']) ? json_decode($product['variants'], true) : [];
                 $product['cart_quantity'] = $item['quantity'] ?? 1;
                 $product['cart_type'] = 'product';
-                // vendorId is already included from the SELECT query above
                 $result[] = $product;
             }
         }
@@ -285,28 +466,97 @@ function getCartItems() {
     return $result;
 }
 
+/**
+ * Get cart total - supports both session and database
+ */
 function getCartTotal() {
-    $user = getCurrentUser();
-    if (!$user || !isset($user['id'])) {
-        return 0;
-    }
-    
-    $cart = getCart($user['id']);
+    $cart = getCart();
     return (float)($cart['totalPrice'] ?? 0);
 }
 
+/**
+ * Get cart count - supports both session and database
+ */
 function getCartCount() {
-    $user = getCurrentUser();
-    if (!$user || !isset($user['id'])) {
-        return 0;
-    }
-    
-    $cart = getCart($user['id']);
+    $cart = getCart();
     $items = $cart['items'] ?? [];
     $count = 0;
     foreach ($items as $item) {
         $count += (int)($item['quantity'] ?? 1);
     }
     return $count;
+}
+
+/**
+ * Merge session cart into database cart when user logs in
+ */
+function mergeSessionCartToDatabase($userId) {
+    $sessionCart = getSessionCart();
+    $sessionItems = $sessionCart['items'] ?? [];
+    
+    if (empty($sessionItems)) {
+        return; // Nothing to merge
+    }
+    
+    $conn = getDBConnection();
+    
+    // Get or create database cart
+    $stmt = $conn->prepare("SELECT * FROM carts WHERE userId = :userId");
+    $stmt->execute([':userId' => $userId]);
+    $dbCart = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    $dbItems = [];
+    if ($dbCart) {
+        $dbItems = !empty($dbCart['items']) ? json_decode($dbCart['items'], true) : [];
+    }
+    
+    // Merge session items into database items
+    foreach ($sessionItems as $sessionItem) {
+        $productId = $sessionItem['productId'] ?? '';
+        $type = $sessionItem['type'] ?? 'product';
+        
+        // Check if item already exists in database cart
+        $existingIndex = -1;
+        foreach ($dbItems as $index => $dbItem) {
+            if (($dbItem['productId'] ?? '') === $productId && (($dbItem['type'] ?? 'product') === $type)) {
+                $existingIndex = $index;
+                break;
+            }
+        }
+        
+        if ($existingIndex !== -1) {
+            // Merge quantities
+            $dbItems[$existingIndex]['quantity'] += (int)($sessionItem['quantity'] ?? 1);
+        } else {
+            // Add new item
+            $dbItems[] = $sessionItem;
+        }
+    }
+    
+    // Recalculate total
+    $totalPrice = 0;
+    foreach ($dbItems as $item) {
+        $totalPrice += (float)$item['price'] * (int)$item['quantity'];
+    }
+    
+    // Update or create database cart
+    if ($dbCart) {
+        $stmt = $conn->prepare("UPDATE carts SET items = :items, totalPrice = :totalPrice, updated_at = NOW() WHERE userId = :userId");
+        $stmt->execute([
+            ':items' => json_encode($dbItems),
+            ':totalPrice' => $totalPrice,
+            ':userId' => $userId
+        ]);
+    } else {
+        $stmt = $conn->prepare("INSERT INTO carts (id, userId, items, totalPrice, created_at, updated_at) VALUES (UUID(), :userId, :items, :totalPrice, NOW(), NOW())");
+        $stmt->execute([
+            ':userId' => $userId,
+            ':items' => json_encode($dbItems),
+            ':totalPrice' => $totalPrice
+        ]);
+    }
+    
+    // Clear session cart after merging
+    saveSessionCart(['items' => [], 'totalPrice' => 0]);
 }
 ?>

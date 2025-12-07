@@ -11,6 +11,11 @@ function isAuthenticated() {
 
 function requireAuth($requiredRole = null) {
     if (!isAuthenticated()) {
+        // Store the current URL as return URL for redirect after login
+        $currentUrl = $_SERVER['REQUEST_URI'] ?? '';
+        if (!empty($currentUrl)) {
+            $_SESSION['return_url'] = $currentUrl;
+        }
         header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '') . '/auth/login.php');
         exit;
     }
@@ -102,6 +107,10 @@ function loginUser($email, $password, $platform = 'trivemart') {
             'vendorId' => $user['vendorId'] ?? null,
             'clientId' => $user['clientId'] ?? null
         ];
+        
+        // Step 8: Merge session cart into database cart if user had items in session
+        require_once __DIR__ . '/cart.php';
+        mergeSessionCartToDatabase($user['id']);
         
         return true;
         

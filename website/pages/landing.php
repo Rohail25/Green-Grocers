@@ -32,27 +32,58 @@ $featuredPackages = getFeaturedPackages(6);
     </section>
 
     <!-- Explore Categories -->
-    <section class="px-6 py-10 bg-white">
-        <div class="flex items-center justify-between mb-6">
-            <h3 class="text-xl font-bold">Explore Categories</h3>
-            <div class="flex gap-2">
-                <button onclick="scrollCategories('left')" class="p-2 border rounded-full hover:bg-gray-100">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+    <section class="px-6 py-8 bg-white">
+        <!-- Header with Title, Filters, and Navigation -->
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+            <h3 class="text-2xl md:text-3xl font-bold text-gray-800">Explore Categories</h3>
+            
+            <!-- Filter Buttons -->
+            <div class="flex items-center gap-3 md:gap-4 flex-wrap">
+                <button onclick="filterCategory('all')" class="category-filter px-4 py-2 rounded-full text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition" data-filter="all">
+                    All
                 </button>
-                <button onclick="scrollCategories('right')" class="p-2 border rounded-full hover:bg-gray-100">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                <button onclick="filterCategory('Veges')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Veges">
+                    Veges
+                </button>
+                <button onclick="filterCategory('Fruit')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Fruit">
+                    Fruits
+                </button>
+                <button onclick="filterCategory('Juices and Smoothies')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Juices and Smoothies">
+                    Juices & Smoothies
+                </button>
+                <button onclick="filterCategory('Grocery')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Grocery">
+                    Grocery
+                </button>
+            </div>
+            
+            <!-- Navigation Arrows -->
+            <div class="flex gap-2 ml-auto">
+                <button onclick="scrollCategories('left')" class="p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition">
+                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button onclick="scrollCategories('right')" class="p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition">
+                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                 </button>
             </div>
         </div>
-        <div id="categories-scroll" class="flex flex-wrap justify-center gap-10 md:gap-16">
+        
+        <!-- Categories Grid -->
+        <div id="categories-scroll" class="flex overflow-x-auto gap-8 md:gap-10 lg:gap-12 justify-start pb-4 px-2 scrollbar-hide">
             <?php foreach ($categories as $cat): ?>
-                <a href="<?php echo BASE_PATH; ?>/category?name=<?php echo urlencode($cat['title']); ?>" class="text-center flex-shrink-0 w-28 md:w-32 cursor-pointer flex flex-col items-center gap-3">
+                <a href="<?php echo BASE_PATH; ?>/category?name=<?php echo urlencode($cat['title']); ?>" 
+                   class="category-item text-center flex-shrink-0 w-28 md:w-32 lg:w-36 cursor-pointer flex flex-col items-center gap-3 group"
+                   data-category="<?php echo htmlspecialchars($cat['title']); ?>">
                     <?php 
                     // Use full image path if available, otherwise use basename for backward compatibility
                     $imgPath = !empty($cat['image']) ? imagePath($cat['image']) : imagePath('category.jpg');
                     ?>
-                    <img src="<?php echo $imgPath; ?>" alt="<?php echo htmlspecialchars($cat['title']); ?>" class="w-20 h-20 md:w-24 md:h-24 object-cover rounded-full mx-auto shadow-lg border border-gray-100" />
-                    <p class="text-sm font-semibold text-gray-800"><?php echo htmlspecialchars($cat['title']); ?></p>
+                    <!-- Circular Container with Background -->
+                    <div class="relative w-24 h-24 md:w-28 md:h-28 rounded-full bg-gray-100 flex items-center justify-center shadow-lg border-2 border-gray-200 group-hover:border-green-500 group-hover:shadow-xl transition-all duration-300">
+                        <img src="<?php echo $imgPath; ?>" 
+                             alt="<?php echo htmlspecialchars($cat['title']); ?>" 
+                             class="w-20 h-20 md:w-24 md:h-24 object-contain rounded-full" />
+                    </div>
+                    <p class="text-sm font-semibold text-gray-800 group-hover:text-green-600 transition-colors"><?php echo htmlspecialchars($cat['title']); ?></p>
                 </a>
             <?php endforeach; ?>
         </div>
@@ -96,7 +127,10 @@ $featuredPackages = getFeaturedPackages(6);
                                     <span class="text-gray-500">(<?php echo htmlspecialchars($product['itemSize'] ?? ''); ?>)</span>
                                 </p>
                                 <div class="mt-2 flex items-center gap-3">
-                                    <p class="text-lg font-bold text-black">$<?php echo number_format($discountPrice, 2); ?></p>
+                                    <div>
+                                        <p class="text-lg font-bold text-black">$<?php echo number_format($discountPrice, 2); ?></p>
+                                        <p class="text-xs text-gray-500"><?php echo htmlspecialchars($product['priceUnit'] ?? 'Per Each'); ?></p>
+                                    </div>
                                     <p class="text-sm line-through text-gray-500">$<?php echo number_format($basePrice, 2); ?></p>
                                 </div>
                                 <form method="POST" action="<?php echo BASE_PATH; ?>/includes/cart-action.php" class="mt-4">
@@ -205,11 +239,52 @@ $featuredPackages = getFeaturedPackages(6);
     </section>
 </div>
 
+<style>
+.scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+}
+</style>
+
 <script>
 function scrollCategories(direction) {
     const el = document.getElementById('categories-scroll');
     el.scrollBy({ left: direction === 'left' ? -300 : 300, behavior: 'smooth' });
 }
+
+function filterCategory(categoryName) {
+    // Update filter button styles
+    document.querySelectorAll('.category-filter').forEach(btn => {
+        btn.classList.remove('bg-green-600', 'text-white');
+        btn.classList.add('bg-gray-100', 'text-gray-600');
+    });
+    
+    // Highlight selected filter
+    const selectedBtn = document.querySelector(`[data-filter="${categoryName}"]`);
+    if (selectedBtn) {
+        selectedBtn.classList.remove('bg-gray-100', 'text-gray-600');
+        selectedBtn.classList.add('bg-green-600', 'text-white');
+    }
+    
+    // Filter categories (if categoryName is 'all', show all)
+    const categoryItems = document.querySelectorAll('.category-item');
+    categoryItems.forEach(item => {
+        if (categoryName === 'all') {
+            item.style.display = 'flex';
+        } else {
+            const itemCategory = item.getAttribute('data-category');
+            if (itemCategory === categoryName) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        }
+    });
+}
+
 function scrollProducts(direction) {
     const el = document.getElementById('products-scroll');
     el.scrollBy({ left: direction === 'left' ? -300 : 300, behavior: 'smooth' });

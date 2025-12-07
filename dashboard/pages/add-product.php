@@ -32,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stock = intval($_POST['stock'] ?? 0);
     $categoryName = $_POST['category'] ?? '';
     $itemSize = $_POST['item_size'] ?? '';
+    $priceUnit = $_POST['price_unit'] ?? '';
     $description = $_POST['description'] ?? '';
     $discountValue = floatval($_POST['discount_value'] ?? 0);
     $isFeatured = isset($_POST['is_featured']) ? 1 : 0;
@@ -44,8 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (!$category) {
         $error = 'Category not found';
-    } elseif (empty($name) || $price <= 0) {
-        $error = 'Please fill in all required fields';
+    } elseif (empty($name) || $price <= 0 || empty($priceUnit)) {
+        $error = 'Please fill in all required fields including price unit';
     } else {
         // Generate a UUID-like product ID to match Node.js schema
         $productId = generateProductId();
@@ -67,21 +68,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Insert product (new schema: id, categoryId, retailPrice, status, isFeatured, discount JSON)
         $images = $imagePath ? json_encode([$imagePath]) : json_encode([]);
         $discount = json_encode(['type' => 'percentage', 'value' => $discountValue]);
-        $stmt = $conn->prepare("INSERT INTO products (id, name, categoryId, retailPrice, totalQuantityInStock, itemSize, description, discount, isFeatured, images, status) 
-                                VALUES (:id, :name, :categoryId, :price, :stock, :itemSize, :description, :discount, :isFeatured, :images, 'active')");
         
-        $executed = $stmt->execute([
-            ':id'         => $productId,
-            ':name'       => $name,
-            ':categoryId' => $category['id'],
-            ':price'      => $price,
-            ':stock'      => $stock,
-            ':itemSize'   => $itemSize,
-            ':description'=> $description,
-            ':discount'   => $discount,
-            ':isFeatured' => $isFeatured ? 1 : 0,
-            ':images'     => $images,
-        ]);
+        // Check if priceUnit column exists, if not, we'll store it in itemSize or add it later
+        // For now, we'll try to insert it and handle gracefully if column doesn't exist
+        try {
+            $stmt = $conn->prepare("INSERT INTO products (id, name, categoryId, retailPrice, totalQuantityInStock, itemSize, priceUnit, description, discount, isFeatured, images, status) 
+                                    VALUES (:id, :name, :categoryId, :price, :stock, :itemSize, :priceUnit, :description, :discount, :isFeatured, :images, 'active')");
+            
+            $executed = $stmt->execute([
+                ':id'         => $productId,
+                ':name'       => $name,
+                ':categoryId' => $category['id'],
+                ':price'      => $price,
+                ':stock'      => $stock,
+                ':itemSize'   => $itemSize,
+                ':priceUnit'  => $priceUnit,
+                ':description'=> $description,
+                ':discount'   => $discount,
+                ':isFeatured' => $isFeatured ? 1 : 0,
+                ':images'     => $images,
+            ]);
+        } catch (PDOException $e) {
+            // If priceUnit column doesn't exist, insert without it (will need to add column via migration)
+            if (strpos($e->getMessage(), 'priceUnit') !== false || strpos($e->getMessage(), 'Unknown column') !== false) {
+                $stmt = $conn->prepare("INSERT INTO products (id, name, categoryId, retailPrice, totalQuantityInStock, itemSize, description, discount, isFeatured, images, status) 
+                                        VALUES (:id, :name, :categoryId, :price, :stock, :itemSize, :description, :discount, :isFeatured, :images, 'active')");
+                
+                $executed = $stmt->execute([
+                    ':id'         => $productId,
+                    ':name'       => $name,
+                    ':categoryId' => $category['id'],
+                    ':price'      => $price,
+                    ':stock'      => $stock,
+                    ':itemSize'   => $itemSize . ($priceUnit ? ' (' . $priceUnit . ')' : ''),
+                    ':description'=> $description,
+                    ':discount'   => $discount,
+                    ':isFeatured' => $isFeatured ? 1 : 0,
+                    ':images'     => $images,
+                ]);
+            } else {
+                throw $e;
+            }
+        }
         
         if ($executed) {
             $success = 'Product added successfully!';
@@ -151,11 +179,23 @@ $categories = getCategories();
             </select>
         </div>
 
-        <!-- Price and Stock -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Price, Price Unit and Stock -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <label class="block mb-2 font-semibold">Price ($) <span class="text-red-500">*</span></label>
                 <input type="number" name="price" step="0.01" required min="0" class="w-full border px-4 py-3 rounded-md" placeholder="0.00" value="<?php echo htmlspecialchars($_POST['price'] ?? ''); ?>">
+            </div>
+            <div>
+                <label class="block mb-2 font-semibold">Price Unit <span class="text-red-500">*</span></label>
+                <select name="price_unit" required class="w-full border px-4 py-3 rounded-md">
+                    <option value="">Select Unit</option>
+                    <option value="Per KG" <?php echo (($_POST['price_unit'] ?? '') === 'Per KG') ? 'selected' : ''; ?>>Per KG</option>
+                    <option value="Per Each" <?php echo (($_POST['price_unit'] ?? '') === 'Per Each') ? 'selected' : ''; ?>>Per Each</option>
+                    <option value="Per Dozen" <?php echo (($_POST['price_unit'] ?? '') === 'Per Dozen') ? 'selected' : ''; ?>>Per Dozen</option>
+                    <option value="Per Pack" <?php echo (($_POST['price_unit'] ?? '') === 'Per Pack') ? 'selected' : ''; ?>>Per Pack</option>
+                    <option value="Per Liter" <?php echo (($_POST['price_unit'] ?? '') === 'Per Liter') ? 'selected' : ''; ?>>Per Liter</option>
+                    <option value="Per Piece" <?php echo (($_POST['price_unit'] ?? '') === 'Per Piece') ? 'selected' : ''; ?>>Per Piece</option>
+                </select>
             </div>
             <div>
                 <label class="block mb-2 font-semibold">Stock Quantity <span class="text-red-500">*</span></label>

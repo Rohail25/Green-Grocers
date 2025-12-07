@@ -63,7 +63,9 @@ $isAuthenticated = isAuthenticated();
             $cartCount = getCartCount();
             if ($cartCount > 0):
             ?>
-                <span class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"><?php echo $cartCount; ?></span>
+                <span class="cart-badge absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"><?php echo $cartCount; ?></span>
+            <?php else: ?>
+                <span class="cart-badge absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style="display: none;">0</span>
             <?php endif; ?>
         </button>
 

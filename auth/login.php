@@ -34,6 +34,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (loginUser($email, $password, $platform)) {
         $user = getCurrentUser();
         
+        // Check if there's a return URL (e.g., from checkout page)
+        $returnUrl = $_SESSION['return_url'] ?? null;
+        if ($returnUrl) {
+            unset($_SESSION['return_url']);
+            header('Location: ' . $returnUrl);
+            exit;
+        }
+        
         // Redirect based on role
         if ($user['role'] === 'admin' || $user['role'] === 'vendor') {
             // Admin and Vendor → Admin Dashboard

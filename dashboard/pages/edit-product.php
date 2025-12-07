@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stock = intval($_POST['stock'] ?? 0);
     $categoryName = $_POST['category'] ?? '';
     $itemSize = $_POST['item_size'] ?? '';
+    $priceUnit = $_POST['price_unit'] ?? '';
     $description = $_POST['description'] ?? '';
     $discountValue = floatval($_POST['discount_value'] ?? 0);
     $isFeatured = isset($_POST['is_featured']) ? 1 : 0;
@@ -65,8 +66,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (!$newCategory) {
         $error = 'Category not found';
-    } elseif (empty($name) || $price <= 0) {
-        $error = 'Please fill in all required fields';
+    } elseif (empty($name) || $price <= 0 || empty($priceUnit)) {
+        $error = 'Please fill in all required fields including price unit';
     } else {
         // Handle image upload
         $images = $product['images'];
@@ -86,30 +87,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Update product (new schema fields)
         $imagesJson = json_encode($images);
         $discount = json_encode(['type' => 'percentage', 'value' => $discountValue]);
-        $stmt = $conn->prepare("UPDATE products 
-                                SET name = :name, 
-                                    categoryId = :categoryId, 
-                                    retailPrice = :price, 
-                                    totalQuantityInStock = :stock, 
-                                    itemSize = :itemSize, 
-                                    description = :description, 
-                                    discount = :discount, 
-                                    isFeatured = :isFeatured, 
-                                    images = :images 
-                                WHERE id = :id");
         
-        $executed = $stmt->execute([
-            ':name'       => $name,
-            ':categoryId' => $newCategory['id'],
-            ':price'      => $price,
-            ':stock'      => $stock,
-            ':itemSize'   => $itemSize,
-            ':description'=> $description,
-            ':discount'   => $discount,
-            ':isFeatured' => $isFeatured ? 1 : 0,
-            ':images'     => $imagesJson,
-            ':id'         => $productId,
-        ]);
+        // Try to update with priceUnit, fallback if column doesn't exist
+        try {
+            $stmt = $conn->prepare("UPDATE products 
+                                    SET name = :name, 
+                                        categoryId = :categoryId, 
+                                        retailPrice = :price, 
+                                        totalQuantityInStock = :stock, 
+                                        itemSize = :itemSize, 
+                                        priceUnit = :priceUnit,
+                                        description = :description, 
+                                        discount = :discount, 
+                                        isFeatured = :isFeatured, 
+                                        images = :images 
+                                    WHERE id = :id");
+            
+            $executed = $stmt->execute([
+                ':name'       => $name,
+                ':categoryId' => $newCategory['id'],
+                ':price'      => $price,
+                ':stock'      => $stock,
+                ':itemSize'   => $itemSize,
+                ':priceUnit'  => $priceUnit,
+                ':description'=> $description,
+                ':discount'   => $discount,
+                ':isFeatured' => $isFeatured ? 1 : 0,
+                ':images'     => $imagesJson,
+                ':id'         => $productId,
+            ]);
+        } catch (PDOException $e) {
+            // If priceUnit column doesn't exist, update without it
+            if (strpos($e->getMessage(), 'priceUnit') !== false || strpos($e->getMessage(), 'Unknown column') !== false) {
+                $stmt = $conn->prepare("UPDATE products 
+                                        SET name = :name, 
+                                            categoryId = :categoryId, 
+                                            retailPrice = :price, 
+                                            totalQuantityInStock = :stock, 
+                                            itemSize = :itemSize, 
+                                            description = :description, 
+                                            discount = :discount, 
+                                            isFeatured = :isFeatured, 
+                                            images = :images 
+                                        WHERE id = :id");
+                
+                $executed = $stmt->execute([
+                    ':name'       => $name,
+                    ':categoryId' => $newCategory['id'],
+                    ':price'      => $price,
+                    ':stock'      => $stock,
+                    ':itemSize'   => $itemSize . ($priceUnit ? ' (' . $priceUnit . ')' : ''),
+                    ':description'=> $description,
+                    ':discount'   => $discount,
+                    ':isFeatured' => $isFeatured ? 1 : 0,
+                    ':images'     => $imagesJson,
+                    ':id'         => $productId,
+                ]);
+            } else {
+                throw $e;
+            }
+        }
         
         if ($executed) {
             $success = 'Product updated successfully!';
@@ -174,11 +211,23 @@ $categories = getCategories();
             </select>
         </div>
 
-        <!-- Price and Stock -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Price, Price Unit and Stock -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <label class="block mb-2 font-semibold">Price ($) <span class="text-red-500">*</span></label>
                 <input type="number" name="price" step="0.01" required min="0" class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($product['retailPrice'] ?? 0); ?>">
+            </div>
+            <div>
+                <label class="block mb-2 font-semibold">Price Unit <span class="text-red-500">*</span></label>
+                <select name="price_unit" required class="w-full border px-4 py-3 rounded-md">
+                    <option value="">Select Unit</option>
+                    <option value="Per KG" <?php echo (($product['priceUnit'] ?? '') === 'Per KG') ? 'selected' : ''; ?>>Per KG</option>
+                    <option value="Per Each" <?php echo (($product['priceUnit'] ?? '') === 'Per Each') ? 'selected' : ''; ?>>Per Each</option>
+                    <option value="Per Dozen" <?php echo (($product['priceUnit'] ?? '') === 'Per Dozen') ? 'selected' : ''; ?>>Per Dozen</option>
+                    <option value="Per Pack" <?php echo (($product['priceUnit'] ?? '') === 'Per Pack') ? 'selected' : ''; ?>>Per Pack</option>
+                    <option value="Per Liter" <?php echo (($product['priceUnit'] ?? '') === 'Per Liter') ? 'selected' : ''; ?>>Per Liter</option>
+                    <option value="Per Piece" <?php echo (($product['priceUnit'] ?? '') === 'Per Piece') ? 'selected' : ''; ?>>Per Piece</option>
+                </select>
             </div>
             <div>
                 <label class="block mb-2 font-semibold">Stock Quantity <span class="text-red-500">*</span></label>
