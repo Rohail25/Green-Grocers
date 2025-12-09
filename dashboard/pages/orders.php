@@ -43,8 +43,8 @@ $orders = getAllOrders();
             <tbody class="bg-white divide-y">
                 <?php foreach ($orders as $order): ?>
                     <?php
-                    // Order number: use id (UUID) as display reference
-                    $orderNumber = $order['id'] ?? '';
+                    // Order number: use orderNumber field if available, otherwise use id (UUID) as fallback
+                    $orderNumber = !empty($order['orderNumber']) ? $order['orderNumber'] : (substr($order['id'] ?? '', 0, 8) . '...');
                     $customerName = trim(($order['firstName'] ?? '') . ' ' . ($order['lastName'] ?? ''));
                     $totalAmount = $order['totalAmount'] ?? 0;
                     ?>

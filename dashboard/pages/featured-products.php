@@ -34,7 +34,7 @@ $products = getAllProducts();
                 $isFeatured = !empty($product['isFeatured']);
             ?>
             <div class="bg-white rounded-lg shadow p-4">
-                <img src="<?php echo !empty($product['images']) ? htmlspecialchars($product['images'][0]) : imagePath('product.jpg'); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" class="w-full h-48 object-cover rounded mb-4" />
+                <img src="<?php echo htmlspecialchars(getProductImage($product)); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" class="w-full h-48 object-cover rounded mb-4" />
                 <h3 class="font-semibold text-lg mb-2"><?php echo htmlspecialchars($product['name']); ?></h3>
                 <p class="text-gray-600 mb-4">$<?php echo number_format($price, 2); ?></p>
                 <form method="POST" class="mt-4">

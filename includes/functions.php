@@ -95,6 +95,91 @@ function getProductsByCategory($categoryName) {
     return $products;
 }
 
+// Search products by name (supports partial matching, case-insensitive)
+function searchProducts($searchQuery) {
+    if (empty(trim($searchQuery))) {
+        return [];
+    }
+    
+    $conn = getDBConnection();
+    $searchTerm = '%' . trim($searchQuery) . '%';
+    $searchExact = trim($searchQuery) . '%';
+    
+    try {
+        // Case-insensitive search in name, description, and category name
+        // Use COALESCE to handle NULL descriptions
+        $stmt = $conn->prepare("
+            SELECT p.*, c.title as category_name 
+            FROM products p 
+            LEFT JOIN categories c ON p.categoryId = c.id 
+            WHERE p.status = 'active' 
+            AND (
+                LOWER(p.name) LIKE LOWER(:search) 
+                OR LOWER(COALESCE(p.description, '')) LIKE LOWER(:search)
+                OR LOWER(COALESCE(c.title, '')) LIKE LOWER(:search)
+            )
+            ORDER BY 
+                CASE 
+                    WHEN LOWER(p.name) LIKE LOWER(:searchExact) THEN 1
+                    WHEN LOWER(p.name) LIKE LOWER(:search) THEN 2
+                    ELSE 3
+                END,
+                p.created_at DESC
+        ");
+        
+        $stmt->execute([
+            ':search' => $searchTerm,
+            ':searchExact' => $searchExact
+        ]);
+        
+        $products = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            // Match Node.js: decode all JSON fields
+            $row['images'] = !empty($row['images']) ? json_decode($row['images'], true) : [];
+            $row['variants'] = !empty($row['variants']) ? json_decode($row['variants'], true) : [];
+            $row['discount'] = !empty($row['discount']) ? json_decode($row['discount'], true) : ['type' => 'percentage', 'value' => 0];
+            $row['tags'] = !empty($row['tags']) ? json_decode($row['tags'], true) : [];
+            
+            if (!isset($row['discount']['value'])) {
+                $row['discount']['value'] = 0;
+            }
+            $products[] = $row;
+        }
+        return $products;
+    } catch (PDOException $e) {
+        error_log("Search error: " . $e->getMessage());
+        // Fallback: try simpler search if complex one fails
+        try {
+            $stmt = $conn->prepare("
+                SELECT p.*, c.title as category_name 
+                FROM products p 
+                LEFT JOIN categories c ON p.categoryId = c.id 
+                WHERE p.status = 'active' 
+                AND p.name LIKE :search
+                ORDER BY p.created_at DESC
+            ");
+            $stmt->execute([':search' => $searchTerm]);
+            
+            $products = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $row['images'] = !empty($row['images']) ? json_decode($row['images'], true) : [];
+                $row['variants'] = !empty($row['variants']) ? json_decode($row['variants'], true) : [];
+                $row['discount'] = !empty($row['discount']) ? json_decode($row['discount'], true) : ['type' => 'percentage', 'value' => 0];
+                $row['tags'] = !empty($row['tags']) ? json_decode($row['tags'], true) : [];
+                
+                if (!isset($row['discount']['value'])) {
+                    $row['discount']['value'] = 0;
+                }
+                $products[] = $row;
+            }
+            return $products;
+        } catch (PDOException $e2) {
+            error_log("Fallback search error: " . $e2->getMessage());
+            return [];
+        }
+    }
+}
+
 // Match Node.js: getFeaturedPackages (used on public site - show all active packages)
 function getFeaturedPackages($limit = 6) {
     $conn = getDBConnection();
@@ -293,5 +378,101 @@ function getPackagesByDay($day) {
         $packages[] = $row;
     }
     return $packages;
+}
+
+// Generate placeholder image with product name
+function generateProductPlaceholder($productName, $width = 400, $height = 400) {
+    // Check if GD library is available
+    if (!function_exists('imagecreatetruecolor')) {
+        return null;
+    }
+    
+    // Create directory if it doesn't exist
+    $placeholderDir = __DIR__ . '/../public/uploads/placeholders/';
+    if (!is_dir($placeholderDir)) {
+        mkdir($placeholderDir, 0777, true);
+    }
+    
+    // Generate filename based on product name (sanitized)
+    $sanitizedName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $productName);
+    $sanitizedName = substr($sanitizedName, 0, 50); // Limit length
+    $filename = md5($productName) . '_' . $sanitizedName . '.png';
+    $filepath = $placeholderDir . $filename;
+    
+    // If image already exists, return its URL
+    if (file_exists($filepath)) {
+        return BASE_PATH . '/public/uploads/placeholders/' . $filename;
+    }
+    
+    // Create image
+    $image = imagecreatetruecolor($width, $height);
+    
+    // Set colors
+    $bgColor = imagecolorallocate($image, 240, 240, 240); // Light gray background
+    $textColor = imagecolorallocate($image, 100, 100, 100); // Dark gray text
+    $borderColor = imagecolorallocate($image, 200, 200, 200); // Light border
+    
+    // Fill background
+    imagefill($image, 0, 0, $bgColor);
+    
+    // Draw border
+    imagerectangle($image, 0, 0, $width - 1, $height - 1, $borderColor);
+    
+    // Prepare text - use built-in font for simplicity
+    $font = 5; // Built-in font size
+    $charWidth = imagefontwidth($font);
+    $charHeight = imagefontheight($font);
+    $maxWidth = $width - 40; // Padding
+    $maxCharsPerLine = floor($maxWidth / $charWidth);
+    
+    // Word wrap text
+    $words = explode(' ', $productName);
+    $lines = [];
+    $currentLine = '';
+    
+    foreach ($words as $word) {
+        $testLine = $currentLine . ($currentLine ? ' ' : '') . $word;
+        if (strlen($testLine) > $maxCharsPerLine && $currentLine) {
+            $lines[] = $currentLine;
+            $currentLine = $word;
+        } else {
+            $currentLine = $testLine;
+        }
+    }
+    if ($currentLine) {
+        $lines[] = $currentLine;
+    }
+    
+    // Calculate total text height
+    $lineHeight = $charHeight + 5;
+    $totalHeight = count($lines) * $lineHeight;
+    $startY = ($height - $totalHeight) / 2;
+    
+    // Draw text lines
+    foreach ($lines as $index => $line) {
+        $textWidth = $charWidth * strlen($line);
+        $x = ($width - $textWidth) / 2;
+        $y = $startY + ($index * $lineHeight);
+        imagestring($image, $font, $x, $y, $line, $textColor);
+    }
+    
+    // Save image
+    imagepng($image, $filepath);
+    imagedestroy($image);
+    
+    return BASE_PATH . '/public/uploads/placeholders/' . $filename;
+}
+
+// Get product image with placeholder fallback
+function getProductImage($product, $index = 0) {
+    $images = is_array($product['images'] ?? null) ? $product['images'] : (!empty($product['images']) ? json_decode($product['images'], true) : []);
+    
+    if (!empty($images) && isset($images[$index])) {
+        return $images[$index];
+    }
+    
+    // Generate placeholder if no image
+    $productName = $product['name'] ?? 'Product';
+    return generateProductPlaceholder($productName);
 }
 ?>

@@ -84,6 +84,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
+        // If no image exists, generate placeholder with product name
+        if (empty($images)) {
+            $placeholderPath = generateProductPlaceholder($name);
+            if ($placeholderPath) {
+                $images = [$placeholderPath];
+            }
+        }
+        
         // Update product (new schema fields)
         $imagesJson = json_encode($images);
         $discount = json_encode(['type' => 'percentage', 'value' => $discountValue]);
@@ -181,7 +189,9 @@ $categories = getCategories();
             <label class="block mb-2 font-semibold">Product Image</label>
             <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                 <?php if (!empty($product['images'])): ?>
-                    <img src="<?php echo htmlspecialchars($product['images'][0]); ?>" alt="Current" class="max-w-full max-h-48 mx-auto mb-4 rounded">
+                    <img src="<?php echo htmlspecialchars(getProductImage($product)); ?>" alt="Current" class="max-w-full max-h-48 mx-auto mb-4 rounded">
+                <?php else: ?>
+                    <img src="<?php echo htmlspecialchars(getProductImage($product)); ?>" alt="Placeholder" class="max-w-full max-h-48 mx-auto mb-4 rounded">
                 <?php endif; ?>
                 <input type="file" name="image" id="imageUpload" accept="image/*" class="hidden" onchange="previewImage(this)">
                 <label for="imageUpload" class="cursor-pointer">

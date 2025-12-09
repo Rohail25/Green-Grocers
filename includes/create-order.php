@@ -133,58 +133,147 @@ try {
         );
     }
     $orderId = generateUUID();
-
-    $stmt = $conn->prepare("
-        INSERT INTO orders (
-            id,
-            userId,
-            vendorId,
-            items,
-            shippingAddress,
-            customerName,
-            totalAmount,
-            discountAmount,
-            couponCode,
-            paymentMethod,
-            paymentStatus,
-            transactionId,
-            notes
-        ) VALUES (
-            :id,
-            :userId,
-            :vendorId,
-            :items,
-            :shippingAddress,
-            :customerName,
-            :totalAmount,
-            :discountAmount,
-            :couponCode,
-            :paymentMethod,
-            :paymentStatus,
-            :transactionId,
-            :notes
-        )
-    ");
     
-    $stmt->execute([
-        ':id' => $orderId,
-        ':userId' => $currentUser['id'],
-        ':vendorId' => $vendorId,
-        ':items' => json_encode($items),
-        ':shippingAddress' => json_encode([
-            'street' => $shippingAddress,
-            'phone' => $phone,
-            'notes' => $notes
-        ]),
-        ':customerName' => $customerName,
-        ':totalAmount' => $finalTotal,
-        ':discountAmount' => $discount,
-        ':couponCode' => $couponCode,
-        ':paymentMethod' => strtoupper($paymentMethod),
-        ':paymentStatus' => $paymentStatus,
-        ':transactionId' => $transactionId,
-        ':notes' => $notes
-    ]);
+    // Generate order number in ORD-XXXX format
+    function generateOrderNumber($conn) {
+        try {
+            // Get the highest order number
+            $stmt = $conn->query("SELECT orderNumber FROM orders WHERE orderNumber LIKE 'ORD-%' ORDER BY CAST(SUBSTRING(orderNumber, 5) AS UNSIGNED) DESC LIMIT 1");
+            $lastOrder = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($lastOrder && !empty($lastOrder['orderNumber'])) {
+                // Extract number from last order (e.g., ORD-1001 -> 1001)
+                $lastNumber = intval(substr($lastOrder['orderNumber'], 4));
+                $nextNumber = $lastNumber + 1;
+            } else {
+                // Start from 1001 if no orders exist
+                $nextNumber = 1001;
+            }
+        } catch (PDOException $e) {
+            // If orderNumber column doesn't exist, start from 1001
+            $nextNumber = 1001;
+        }
+        
+        return 'ORD-' . $nextNumber;
+    }
+    
+    $orderNumber = generateOrderNumber($conn);
+
+    // Try to insert with orderNumber first, fallback to without it
+    try {
+        $stmt = $conn->prepare("
+            INSERT INTO orders (
+                id,
+                orderNumber,
+                userId,
+                vendorId,
+                items,
+                shippingAddress,
+                customerName,
+                totalAmount,
+                discountAmount,
+                couponCode,
+                paymentMethod,
+                paymentStatus,
+                transactionId,
+                notes
+            ) VALUES (
+                :id,
+                :orderNumber,
+                :userId,
+                :vendorId,
+                :items,
+                :shippingAddress,
+                :customerName,
+                :totalAmount,
+                :discountAmount,
+                :couponCode,
+                :paymentMethod,
+                :paymentStatus,
+                :transactionId,
+                :notes
+            )
+        ");
+        
+        $stmt->execute([
+            ':id' => $orderId,
+            ':orderNumber' => $orderNumber,
+            ':userId' => $currentUser['id'],
+            ':vendorId' => $vendorId,
+            ':items' => json_encode($items),
+            ':shippingAddress' => json_encode([
+                'street' => $shippingAddress,
+                'phone' => $phone,
+                'notes' => $notes
+            ]),
+            ':customerName' => $customerName,
+            ':totalAmount' => $finalTotal,
+            ':discountAmount' => $discount,
+            ':couponCode' => $couponCode,
+            ':paymentMethod' => strtoupper($paymentMethod),
+            ':paymentStatus' => $paymentStatus,
+            ':transactionId' => $transactionId,
+            ':notes' => $notes
+        ]);
+    } catch (PDOException $e) {
+        // If orderNumber column doesn't exist, insert without it
+        if (strpos($e->getMessage(), 'orderNumber') !== false || strpos($e->getMessage(), 'Unknown column') !== false) {
+            $stmt = $conn->prepare("
+                INSERT INTO orders (
+                    id,
+                    userId,
+                    vendorId,
+                    items,
+                    shippingAddress,
+                    customerName,
+                    totalAmount,
+                    discountAmount,
+                    couponCode,
+                    paymentMethod,
+                    paymentStatus,
+                    transactionId,
+                    notes
+                ) VALUES (
+                    :id,
+                    :userId,
+                    :vendorId,
+                    :items,
+                    :shippingAddress,
+                    :customerName,
+                    :totalAmount,
+                    :discountAmount,
+                    :couponCode,
+                    :paymentMethod,
+                    :paymentStatus,
+                    :transactionId,
+                    :notes
+                )
+            ");
+            
+            $stmt->execute([
+                ':id' => $orderId,
+                ':userId' => $currentUser['id'],
+                ':vendorId' => $vendorId,
+                ':items' => json_encode($items),
+                ':shippingAddress' => json_encode([
+                    'street' => $shippingAddress,
+                    'phone' => $phone,
+                    'notes' => $notes
+                ]),
+                ':customerName' => $customerName,
+                ':totalAmount' => $finalTotal,
+                ':discountAmount' => $discount,
+                ':couponCode' => $couponCode,
+                ':paymentMethod' => strtoupper($paymentMethod),
+                ':paymentStatus' => $paymentStatus,
+                ':transactionId' => $transactionId,
+                ':notes' => $notes
+            ]);
+        } else {
+            // If error is not about orderNumber column, re-throw it
+            throw $e;
+        }
+    }
     
     // Match Node.js: update product quantities
     foreach ($items as $item) {

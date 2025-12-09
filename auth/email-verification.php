@@ -1,4 +1,5 @@
 <?php
+session_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/config.php';
@@ -9,14 +10,21 @@ $token = $_GET['key'] ?? $_GET['token'] ?? '';
 
 // Match Node.js: handle email confirmation via token
 if (!empty($token)) {
+    error_log("Email verification attempt with token: " . substr($token, 0, 10) . "...");
     $result = confirmEmail($token);
+    
     if ($result['success']) {
         $_SESSION['success'] = 'Email confirmed successfully! You can now login.';
+        error_log("Email verification successful");
         header('Location: ' . BASE_PATH . '/auth/login.php');
         exit;
     } else {
         $error = $result['message'] ?? 'Invalid or expired token';
+        error_log("Email verification failed: " . $error);
     }
+} elseif (!empty($email)) {
+    // Just showing the "check your email" message
+    error_log("Email verification page shown for: " . $email);
 }
 ?>
 <!DOCTYPE html>

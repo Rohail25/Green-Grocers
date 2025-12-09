@@ -65,6 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
+        // If no image uploaded, generate placeholder with product name
+        if (empty($imagePath)) {
+            $placeholderPath = generateProductPlaceholder($name);
+            if ($placeholderPath) {
+                $imagePath = $placeholderPath;
+            }
+        }
+        
         // Insert product (new schema: id, categoryId, retailPrice, status, isFeatured, discount JSON)
         $images = $imagePath ? json_encode([$imagePath]) : json_encode([]);
         $discount = json_encode(['type' => 'percentage', 'value' => $discountValue]);

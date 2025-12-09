@@ -1,4 +1,9 @@
 <?php
+// Enable error display for debugging
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/config.php';
@@ -31,32 +36,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Match Node.js flow: login with detected platform
-    if (loginUser($email, $password, $platform)) {
-        $user = getCurrentUser();
-        
-        // Check if there's a return URL (e.g., from checkout page)
-        $returnUrl = $_SESSION['return_url'] ?? null;
-        if ($returnUrl) {
-            unset($_SESSION['return_url']);
-            header('Location: ' . $returnUrl);
+    try {
+        if (loginUser($email, $password, $platform)) {
+            $user = getCurrentUser();
+            
+            // Check if there's a return URL (e.g., from checkout page)
+            $returnUrl = $_SESSION['return_url'] ?? null;
+            if ($returnUrl) {
+                unset($_SESSION['return_url']);
+                header('Location: ' . $returnUrl);
+                exit;
+            }
+            
+            // Redirect based on role
+            if ($user['role'] === 'admin' || $user['role'] === 'vendor') {
+                // Admin and Vendor → Admin Dashboard
+                header('Location: ' . BASE_PATH . '/dashboard/pages/dashboard.php');
+            } elseif ($user['role'] === 'logistic') {
+                // Logistic → Customer Dashboard (or create separate logistic dashboard)
+                header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+            } else {
+                // Customer → Website Home Page
+                header('Location: ' . BASE_PATH . '/');
+            }
             exit;
-        }
-        
-        // Redirect based on role
-        if ($user['role'] === 'admin' || $user['role'] === 'vendor') {
-            // Admin and Vendor → Admin Dashboard
-            header('Location: ' . BASE_PATH . '/dashboard/pages/dashboard.php');
-        } elseif ($user['role'] === 'logistic') {
-            // Logistic → Customer Dashboard (or create separate logistic dashboard)
-            header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
         } else {
-            // Customer → Customer Dashboard
-            header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+            $error = $_SESSION['error'] ?? 'Invalid email or password';
+            unset($_SESSION['error']);
         }
-        exit;
-    } else {
-        $error = $_SESSION['error'] ?? 'Invalid email or password';
-        unset($_SESSION['error']);
+    } catch (Exception $e) {
+        $error = 'Login error: ' . $e->getMessage();
+        error_log("Login error: " . $e->getMessage() . "\n" . $e->getTraceAsString());
+    } catch (Error $e) {
+        $error = 'Login error: ' . $e->getMessage();
+        error_log("Login fatal error: " . $e->getMessage() . "\n" . $e->getTraceAsString());
     }
 }
 ?>
@@ -67,42 +80,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Green Grocers</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        input::placeholder {
+            color: #9ca3af;
+        }
+        input[type="checkbox"] {
+            accent-color: #f97316;
+        }
+    </style>
 </head>
 <body>
 <div class="flex min-h-screen">
-    <div class="hidden md:flex w-1/2 bg-gray-100 items-center justify-center">
-        <img src="<?php echo imagePath('login.jpg'); ?>" alt="Auth Illustration" class="w-full h-[100vh] object-cover" />
+    <div class="hidden md:flex w-1/2 bg-gray-100 items-center justify-center overflow-hidden">
+        <img src="<?php echo imagePath('login.jpg'); ?>" alt="Auth Illustration" class="w-full h-[100vh] object-fit" />
     </div>
-    <div class="w-full md:w-1/2 flex items-center justify-center px-6">
+    <div class="w-full md:w-1/2 flex items-center justify-center ">
         <div class="w-full max-w-md">
-            <h2 class="text-3xl font-bold mb-6">Welcome!</h2>
+            <h2 class="text-3xl font-bold mb-6 text-gray-800" style="font-family: 'Arial', sans-serif;">Welcome!</h2>
             <?php if ($error): ?>
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"><?php echo htmlspecialchars($error); ?></div>
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                    <?php echo htmlspecialchars($error); ?>
+                    <?php if (ini_get('display_errors')): ?>
+                        <div class="mt-2 text-xs text-red-600">
+                            <strong>Debug Info:</strong> Check PHP error logs or enable error display in php.ini
+                        </div>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
-            <form method="POST" class="space-y-3">
+            <form method="POST" class="space-y-4">
                 <div>
-                    <label class="block text-md mb-1">Email</label>
-                    <input type="email" name="email" placeholder="Enter email" class="w-full border px-3 py-2 rounded-lg" required />
+                    <label class="block text-sm font-medium mb-2 text-gray-700" style="font-family: 'Arial', sans-serif;">Email</label>
+                    <input type="email" name="email" placeholder="Enter your email" class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" required />
                 </div>
                 <div>
-                    <label class="block text-md mb-1">Password</label>
-                    <input type="password" name="password" placeholder="Enter password" class="w-full border px-3 py-2 rounded-lg" required />
+                    <label class="block text-sm font-medium mb-2 text-gray-700" style="font-family: 'Arial', sans-serif;">Password</label>
+                    <input type="password" name="password" placeholder="Enter your password" class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" required />
                 </div>
-                <div class="flex items-center justify-between text-sm">
+                <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
-                        <input type="checkbox" id="remember" name="rememberMe" class="w-4 h-4 accent-green-700 cursor-pointer" />
-                        <label for="remember" class="text-md">Remember me</label>
+                        <input type="checkbox" id="remember" name="rememberMe" class="w-5 h-5 cursor-pointer" style="accent-color: #f97316;" />
+                        <label for="remember" class="text-sm text-gray-700" style="font-family: 'Arial', sans-serif;">Remember me</label>
                     </div>
-                    <a href="<?php echo BASE_PATH; ?>/auth/forgot.php" class="text-green-600">Forgot password?</a>
+                    <a href="<?php echo BASE_PATH; ?>/auth/forgot.php" class="text-sm text-orange-500 hover:underline" style="font-family: 'Arial', sans-serif;">Forget Password?</a>
                 </div>
-                <button type="submit" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">Login</button>
-                <div class="flex items-center my-3">
-                    <hr class="flex-grow border-t border-gray-500" />
-                    <span class="px-2 text-sm">OR</span>
-                    <hr class="flex-grow border-t border-gray-500" />
-                </div>
-                <button type="button" class="w-full border py-2 rounded-lg">Login with <span class="text-blue-600 font-serif text-lg">Google</span></button>
-                <p class="text-center text-md mt-3">Don't have an account? <a href="<?php echo BASE_PATH; ?>/auth/register.php" class="text-green-600 font-medium">Sign up</a></p>
+                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium" style="font-family: 'Arial', sans-serif;">Login</button>
             </form>
         </div>
     </div>

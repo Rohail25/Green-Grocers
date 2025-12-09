@@ -19,8 +19,11 @@ elseif (strpos($currentPath, '/featured-products') !== false) $active = 'Feature
 </head>
 <body>
 <div class="flex h-screen bg-gray-50">
+    <!-- Mobile Overlay (when sidebar is open) -->
+    <div id="mobile-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden" onclick="toggleSidebar()"></div>
+    
     <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r shadow-sm flex flex-col">
+    <aside id="sidebar" class="fixed md:relative w-64 h-full bg-white border-r shadow-sm flex flex-col z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
         <!-- Logo -->
         <div class="flex items-center justify-between p-4 border-b">
             <div class="flex items-center gap-2">
@@ -30,6 +33,12 @@ elseif (strpos($currentPath, '/featured-products') !== false) $active = 'Feature
                     <p class="text-md text-gray-500">Company</p>
                 </div>
             </div>
+            <!-- Close button for mobile -->
+            <button onclick="toggleSidebar()" class="md:hidden text-gray-500 hover:text-gray-700">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
         </div>
 
         <!-- Nav Links -->
@@ -58,11 +67,19 @@ elseif (strpos($currentPath, '/featured-products') !== false) $active = 'Feature
     </aside>
 
     <!-- Main Section -->
-    <div class="flex flex-col flex-1">
+    <div class="flex flex-col flex-1 w-full md:w-auto">
         <!-- Header -->
         <header class="flex items-center justify-between bg-white border-b px-4 py-6">
-            <h2 class="text-4xl font-bold text-black"><?php echo htmlspecialchars($active); ?></h2>
-            <div class="flex items-center gap-4 flex-1 ml-6">
+            <div class="flex items-center gap-4">
+                <!-- Hamburger Menu Button (Mobile Only) -->
+                <button onclick="toggleSidebar()" class="md:hidden text-gray-700 hover:text-gray-900">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+                <h2 class="text-2xl md:text-4xl font-bold text-black"><?php echo htmlspecialchars($active); ?></h2>
+            </div>
+            <div class="flex items-center gap-4 flex-1 ml-2 md:ml-6">
                 <!-- Search bar -->
                 <div class="relative flex-1">
                     <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-green-600 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -90,5 +107,5 @@ elseif (strpos($currentPath, '/featured-products') !== false) $active = 'Feature
         </header>
 
         <!-- Content -->
-        <main class="p-6 overflow-y-auto">
+        <main class="p-4 md:p-6 overflow-y-auto w-full">
 

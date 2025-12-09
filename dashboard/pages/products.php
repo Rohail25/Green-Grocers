@@ -43,7 +43,7 @@ $products = getAllProducts();
                 <?php foreach ($products as $product): ?>
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-2">
-                            <img src="<?php echo !empty($product['images']) ? htmlspecialchars($product['images'][0]) : imagePath('product.jpg'); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" class="w-12 h-12 object-cover rounded-md" />
+                            <img src="<?php echo htmlspecialchars(getProductImage($product)); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" class="w-12 h-12 object-cover rounded-md" />
                         </td>
                         <td class="px-4 py-2"><?php echo htmlspecialchars($product['name']); ?></td>
                         <td class="px-4 py-2"><?php echo htmlspecialchars($product['category_name'] ?? 'N/A'); ?></td>

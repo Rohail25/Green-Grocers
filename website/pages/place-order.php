@@ -10,6 +10,8 @@ require_once __DIR__ . '/../../includes/cart.php';
 $pageTitle = 'Checkout';
 $step = (int)($_GET['step'] ?? $_POST['step'] ?? 1);
 $currentUser = getCurrentUser();
+$userProfile = getUserProfile($currentUser['id']);
+$addresses = $userProfile['addresses'] ?? [];
 
 // Preserve form data from previous steps in session
 if ($step == 2 && isset($_POST['delivery_address'])) {
@@ -17,19 +19,35 @@ if ($step == 2 && isset($_POST['delivery_address'])) {
     $_SESSION['checkout_full_name'] = $_POST['full_name'] ?? '';
     $_SESSION['checkout_phone'] = $_POST['phone'] ?? '';
     $_SESSION['checkout_notes'] = $_POST['notes'] ?? '';
+    $_SESSION['checkout_selected_address_index'] = $_POST['selected_address_index'] ?? null;
 }
 if ($step == 3 && isset($_POST['delivery_address'])) {
     $_SESSION['checkout_delivery_address'] = $_POST['delivery_address'];
     $_SESSION['checkout_full_name'] = $_POST['full_name'] ?? '';
     $_SESSION['checkout_phone'] = $_POST['phone'] ?? '';
     $_SESSION['checkout_notes'] = $_POST['notes'] ?? '';
+    $_SESSION['checkout_selected_address_index'] = $_POST['selected_address_index'] ?? null;
 }
 
 // Use session data if POST data is not available
-$deliveryAddress = $_POST['delivery_address'] ?? $_SESSION['checkout_delivery_address'] ?? '';
-$checkoutFullName = $_POST['full_name'] ?? $_SESSION['checkout_full_name'] ?? trim(($currentUser['firstName'] ?? '') . ' ' . ($currentUser['lastName'] ?? ''));
-$checkoutPhone = $_POST['phone'] ?? $_SESSION['checkout_phone'] ?? ($currentUser['phone'] ?? '');
-$checkoutNotes = $_POST['notes'] ?? $_SESSION['checkout_notes'] ?? '';
+// If we have a selected address index, use that address data
+$selectedAddressIndex = $_POST['selected_address_index'] ?? $_SESSION['checkout_selected_address_index'] ?? null;
+if ($selectedAddressIndex !== null && $selectedAddressIndex !== '' && isset($addresses[$selectedAddressIndex])) {
+    $selectedAddress = $addresses[$selectedAddressIndex];
+    $deliveryAddress = ($selectedAddress['streetAddressLine1'] ?? '') . 
+        (!empty($selectedAddress['streetAddressLine2']) ? ', ' . $selectedAddress['streetAddressLine2'] : '') . 
+        ', ' . ($selectedAddress['suburb'] ?? '') . 
+        ', ' . ($selectedAddress['state'] ?? '') . 
+        ' ' . ($selectedAddress['postalCode'] ?? '');
+    $checkoutFullName = trim(($currentUser['firstName'] ?? '') . ' ' . ($currentUser['lastName'] ?? ''));
+    $checkoutPhone = $currentUser['phone'] ?? '';
+    $checkoutNotes = '';
+} else {
+    $deliveryAddress = $_POST['delivery_address'] ?? $_SESSION['checkout_delivery_address'] ?? '';
+    $checkoutFullName = $_POST['full_name'] ?? $_SESSION['checkout_full_name'] ?? trim(($currentUser['firstName'] ?? '') . ' ' . ($currentUser['lastName'] ?? ''));
+    $checkoutPhone = $_POST['phone'] ?? $_SESSION['checkout_phone'] ?? ($currentUser['phone'] ?? '');
+    $checkoutNotes = $_POST['notes'] ?? $_SESSION['checkout_notes'] ?? '';
+}
 // Normalize name fields to support both new (firstName/lastName) and legacy (first_name/last_name)
 $userFirstName = $currentUser['firstName'] ?? $currentUser['first_name'] ?? '';
 $userLastName  = $currentUser['lastName'] ?? $currentUser['last_name'] ?? '';
@@ -85,7 +103,7 @@ $total = $subtotal + $vat;
                                     $basePrice = $item['retailPrice'] ?? 0;
                                     $discountPercent = $item['discount']['value'] ?? 0;
                                     $discountPrice = $basePrice - ($basePrice * $discountPercent / 100);
-                                    $image = !empty($item['images']) ? $item['images'][0] : imagePath('product.jpg');
+                                    $image = getProductImage($item);
                                     $quantity = $item['cart_quantity'] ?? 1;
                                     $itemTotal = $discountPrice * $quantity;
                                     ?>
@@ -107,40 +125,238 @@ $total = $subtotal + $vat;
                         </div>
                     </section>
                 <?php elseif ($step == 2): ?>
-                    <form method="POST" action="?step=3">
+                    <form method="POST" action="?step=3" id="checkoutAddressForm">
                         <section class="bg-white rounded-lg p-6 shadow-sm">
                             <div class="flex justify-between items-center mb-6">
-                                <h2 class="text-2xl font-semibold">Address & Contact</h2>
+                                <h2 class="text-2xl font-bold text-gray-800" style="font-family: 'Arial', sans-serif;">Address</h2>
+                                <button type="button" onclick="openAddAddressModal()" class="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700" style="font-family: 'Arial', sans-serif;">Add New Address</button>
                             </div>
                             
+                            <input type="hidden" name="selected_address_index" id="selected_address_index" value="">
+                            <input type="hidden" name="full_name" id="checkout_full_name" value="<?php echo htmlspecialchars($checkoutFullName); ?>">
+                            <input type="hidden" name="phone" id="checkout_phone" value="<?php echo htmlspecialchars($checkoutPhone); ?>">
+                            <input type="hidden" name="delivery_address" id="checkout_delivery_address" value="<?php echo htmlspecialchars($deliveryAddress); ?>">
+                            <input type="hidden" name="notes" id="checkout_notes" value="<?php echo htmlspecialchars($checkoutNotes); ?>">
+                            
                             <div class="space-y-4">
-                                <div>
-                                    <label class="block mb-2 font-semibold">Full Name <span class="text-red-500">*</span></label>
-                                    <input type="text" name="full_name" required class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($checkoutFullName); ?>">
-                                </div>
-                                
-                                <div>
-                                    <label class="block mb-2 font-semibold">Phone Number <span class="text-red-500">*</span></label>
-                                    <input type="tel" name="phone" required class="w-full border px-4 py-3 rounded-md" value="<?php echo htmlspecialchars($checkoutPhone); ?>">
-                                </div>
-                                
-                                <div>
-                                    <label class="block mb-2 font-semibold">Delivery Address <span class="text-red-500">*</span></label>
-                                    <textarea name="delivery_address" required rows="4" class="w-full border px-4 py-3 rounded-md" placeholder="Enter your complete delivery address"><?php echo htmlspecialchars($deliveryAddress); ?></textarea>
-                                </div>
-                                
-                                <div>
-                                    <label class="block mb-2 font-semibold">Notes (Optional)</label>
-                                    <textarea name="notes" rows="3" class="w-full border px-4 py-3 rounded-md" placeholder="Any special instructions?"><?php echo htmlspecialchars($checkoutNotes); ?></textarea>
-                                </div>
+                                <?php if (empty($addresses)): ?>
+                                    <div class="text-center py-8 border border-gray-300 rounded-lg">
+                                        <p class="text-gray-600 mb-4" style="font-family: 'Arial', sans-serif;">No addresses found. Please add a new address.</p>
+                                    </div>
+                                <?php else: ?>
+                                    <?php foreach ($addresses as $index => $address): ?>
+                                        <?php 
+                                        $isPrimary = $address['isDefault'] ?? false;
+                                        $addressLabel = $isPrimary ? 'Primary Address' : 'Address ' . ($index + 1);
+                                        $addressText = trim(($address['streetAddressLine1'] ?? '') . (!empty($address['streetAddressLine2']) ? ', ' . $address['streetAddressLine2'] : '') . ', ' . ($address['suburb'] ?? '') . ', ' . ($address['state'] ?? '') . ' ' . ($address['postalCode'] ?? ''));
+                                        // Remove trailing comma and spaces
+                                        $addressText = rtrim($addressText, ', ');
+                                        ?>
+                                        <div class="border rounded-lg p-4 cursor-pointer address-card transition-all <?php echo $isPrimary ? 'bg-green-50 border-green-500' : 'bg-white border-gray-300'; ?>" 
+                                             data-index="<?php echo $index; ?>"
+                                             onclick="selectAddress(<?php echo $index; ?>)">
+                                            <div class="flex items-start justify-between">
+                                                <div class="flex-1">
+                                                    <div class="flex items-center gap-2 mb-2">
+                                                        <h3 class="font-bold text-gray-800" style="font-family: 'Arial', sans-serif;"><?php echo htmlspecialchars($addressLabel); ?></h3>
+                                                        <?php if ($isPrimary): ?>
+                                                            <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                            </svg>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <p class="text-gray-700" style="font-family: 'Arial', sans-serif;"><?php echo htmlspecialchars($addressText); ?></p>
+                                                </div>
+                                                <button type="button" onclick="event.stopPropagation(); editAddress(<?php echo $index; ?>)" class="text-blue-600 hover:text-blue-700 font-medium ml-4" style="font-family: 'Arial', sans-serif;">Edit</button>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             </div>
                             
                             <div class="mt-6 flex justify-end gap-4">
-                                <a href="?step=1" class="px-6 py-2 rounded-lg font-medium border border-gray-300 hover:bg-gray-50">Back</a>
-                                <button type="submit" class="px-6 py-2 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700">Continue</button>
+                                <a href="?step=1" class="px-6 py-2 rounded-lg font-medium border border-gray-300 hover:bg-gray-50" style="font-family: 'Arial', sans-serif;">Back</a>
+                                <button type="submit" class="px-6 py-2 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700" style="font-family: 'Arial', sans-serif;">Continue</button>
                             </div>
                         </section>
                     </form>
+                    
+                    <!-- Add/Edit Address Modal -->
+                    <div id="addressModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                        <div class="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+                            <div class="flex items-center justify-between mb-6">
+                                <h3 class="text-xl font-bold text-gray-800" id="modalTitle" style="font-family: 'Arial', sans-serif;">Address</h3>
+                                <button onclick="closeAddressModal()" class="text-gray-500 hover:text-gray-700">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            <form id="addressForm" method="POST" action="<?php echo BASE_PATH; ?>/includes/profile-action.php" class="space-y-5">
+                                <input type="hidden" name="action" id="addressAction" value="add_address">
+                                <input type="hidden" name="addressIndex" id="addressIndex" value="">
+                                <input type="hidden" name="ajax" value="1">
+                                
+                                <div>
+                                    <label class="block text-sm font-medium mb-2 text-gray-800" style="font-family: 'Arial', sans-serif;">Street Address Line 1:</label>
+                                    <input type="text" name="streetAddressLine1" id="streetAddressLine1" required class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" placeholder="Enter street address line 1" />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium mb-2 text-gray-800" style="font-family: 'Arial', sans-serif;">Street Address Line 2:</label>
+                                    <input type="text" name="streetAddressLine2" id="streetAddressLine2" class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" placeholder="Enter street address line 2 (optional)" />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium mb-2 text-gray-800" style="font-family: 'Arial', sans-serif;">Suburb:</label>
+                                    <input type="text" name="suburb" id="suburb" required class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" placeholder="Enter suburb" />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium mb-2 text-gray-800" style="font-family: 'Arial', sans-serif;">State:</label>
+                                    <select name="state" id="state" required class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;">
+                                        <option value="">Select State</option>
+                                        <option value="New South Wales">New South Wales</option>
+                                        <option value="Victoria">Victoria</option>
+                                        <option value="Queensland">Queensland</option>
+                                        <option value="South Australia">South Australia</option>
+                                        <option value="Western Australia">Western Australia</option>
+                                        <option value="Tasmania">Tasmania</option>
+                                        <option value="Australian Capital Territory">Australian Capital Territory</option>
+                                        <option value="Northern Territory">Northern Territory</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium mb-2 text-gray-800" style="font-family: 'Arial', sans-serif;">Postal Code:</label>
+                                    <input type="text" name="postalCode" id="postalCode" required pattern="[0-9]{4}" maxlength="4" class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" placeholder="Enter postal code" />
+                                </div>
+                                
+                                <div class="flex gap-3 mt-6">
+                                    <button type="button" onclick="closeAddressModal()" class="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 font-medium" style="font-family: 'Arial', sans-serif;">Cancel</button>
+                                    <button type="submit" class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium" style="font-family: 'Arial', sans-serif;">Save Address</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <script>
+                    const basePath = '<?php echo BASE_PATH; ?>';
+                    const addresses = <?php echo json_encode($addresses); ?>;
+                    let selectedAddressIndex = null;
+                    
+                    function selectAddress(index) {
+                        selectedAddressIndex = index;
+                        const address = addresses[index];
+                        if (!address) return;
+                        
+                        // Update hidden form fields
+                        document.getElementById('selected_address_index').value = index;
+                        const addressText = (address.streetAddressLine1 || '') + 
+                            (!empty(address.streetAddressLine2) ? ', ' + address.streetAddressLine2 : '') + 
+                            ', ' + (address.suburb || '') + 
+                            ', ' + (address.state || '') + 
+                            ' ' + (address.postalCode || '');
+                        document.getElementById('checkout_delivery_address').value = addressText;
+                        
+                        // Update card styles
+                        document.querySelectorAll('.address-card').forEach((card, i) => {
+                            if (i === index) {
+                                card.classList.add('bg-green-50', 'border-green-500');
+                                card.classList.remove('bg-white', 'border-gray-300');
+                            } else {
+                                card.classList.remove('bg-green-50', 'border-green-500');
+                                card.classList.add('bg-white', 'border-gray-300');
+                            }
+                        });
+                    }
+                    
+                    function openAddAddressModal() {
+                        document.getElementById('modalTitle').textContent = 'Address';
+                        document.getElementById('addressAction').value = 'add_address';
+                        document.getElementById('addressIndex').value = '';
+                        document.getElementById('addressForm').reset();
+                        document.getElementById('addressModal').classList.remove('hidden');
+                    }
+                    
+                    function closeAddressModal() {
+                        document.getElementById('addressModal').classList.add('hidden');
+                        document.getElementById('addressForm').reset();
+                    }
+                    
+                    function editAddress(index) {
+                        const address = addresses[index];
+                        if (!address) return;
+                        
+                        document.getElementById('modalTitle').textContent = 'Address';
+                        document.getElementById('addressAction').value = 'update_address';
+                        document.getElementById('addressIndex').value = index;
+                        document.getElementById('streetAddressLine1').value = address.streetAddressLine1 || '';
+                        document.getElementById('streetAddressLine2').value = address.streetAddressLine2 || '';
+                        document.getElementById('suburb').value = address.suburb || '';
+                        document.getElementById('state').value = address.state || '';
+                        document.getElementById('postalCode').value = address.postalCode || '';
+                        document.getElementById('addressModal').classList.remove('hidden');
+                    }
+                    
+                    // Handle address form submission
+                    document.getElementById('addressForm').addEventListener('submit', function(e) {
+                        e.preventDefault();
+                        
+                        const formData = new FormData(this);
+                        
+                        fetch(basePath + '/includes/profile-action.php', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                alert('Address saved successfully!');
+                                location.reload();
+                            } else {
+                                alert('Error: ' + (data.message || 'Failed to save address'));
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('An error occurred while saving the address');
+                        });
+                    });
+                    
+                    // Handle checkout form submission
+                    document.getElementById('checkoutAddressForm').addEventListener('submit', function(e) {
+                        if (selectedAddressIndex === null && addresses.length > 0) {
+                            e.preventDefault();
+                            alert('Please select an address');
+                            return false;
+                        }
+                        
+                        if (addresses.length === 0) {
+                            e.preventDefault();
+                            alert('Please add an address first');
+                            return false;
+                        }
+                    });
+                    
+                    // Auto-select primary address if available
+                    <?php if (!empty($addresses)): ?>
+                        <?php 
+                        $primaryIndex = null;
+                        foreach ($addresses as $index => $address) {
+                            if ($address['isDefault'] ?? false) {
+                                $primaryIndex = $index;
+                                break;
+                            }
+                        }
+                        if ($primaryIndex !== null): ?>
+                            selectAddress(<?php echo $primaryIndex; ?>);
+                        <?php else: ?>
+                            selectAddress(0);
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    </script>
                 <?php elseif ($step == 3): ?>
                     <?php
                     require_once __DIR__ . '/../../includes/stripe-payment.php';

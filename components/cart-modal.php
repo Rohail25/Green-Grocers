@@ -259,6 +259,7 @@ function updateCartQuantity(id, type, change) {
     formData.append('id', id);
     formData.append('type', type);
     formData.append('change', change);
+    formData.append('ajax', '1'); // Ensure AJAX detection
     
     fetch(BASE_PATH + '/includes/cart-action.php', {
         method: 'POST',
@@ -308,6 +309,7 @@ function removeFromCart(id, type) {
         formData.append('action', 'remove');
         formData.append('id', id);
         formData.append('type', type);
+        formData.append('ajax', '1'); // Ensure AJAX detection
         
         fetch(BASE_PATH + '/includes/cart-action.php', {
             method: 'POST',
