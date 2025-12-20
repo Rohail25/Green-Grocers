@@ -8,6 +8,15 @@ $pageTitle = 'Green Grocers - Fresh Groceries Delivered Daily';
 $categories = getCategories();
 $featuredProducts = getFeaturedProducts(6);
 $featuredPackages = getFeaturedPackages(6);
+function getTopCategories(int $limit = 8): array {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare("SELECT title FROM categories ORDER BY title ASC LIMIT :limit");
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'title');
+}
+
+
 ?>
 <?php require_once __DIR__ . '/../layouts/header.php'; ?>
 
@@ -18,8 +27,8 @@ $featuredPackages = getFeaturedPackages(6);
             <h2 class="text-4xl md:text-6xl font-bold text-green-600 leading-tight" style="font-family: 'Arial', sans-serif; line-height: 1.1;">Fresh Groceries</h2>
             <h3 class="text-4xl md:text-6xl font-bold text-gray-900 mt-2 leading-tight" style="font-family: 'Arial', sans-serif; line-height: 1.1;">Delivered Daily to Your Door</h3>
             <div class="flex gap-4 mt-6 justify-center">
-                <button class="px-6 py-2 border border-orange-500 text-orange-500 bg-white rounded-lg hover:bg-orange-50" style="font-family: 'Arial', sans-serif; min-width: 180px;">Shop Now</button>
-                <button class="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600" style="font-family: 'Arial', sans-serif; min-width: 180px;">Browse Daily Packages</button>
+                <button onclick="scrollToFeaturedProducts()" class="px-6 py-2 border border-orange-500 text-orange-500 bg-white rounded-lg hover:bg-orange-50" style="font-family: 'Arial', sans-serif; min-width: 180px;">Shop Now</button>
+                <button onclick="scrollToDailyPackages()" class="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600" style="font-family: 'Arial', sans-serif; min-width: 180px;">Browse Daily Packages</button>
             </div>
             <p class="text-gray-600 text-lg md:text-xl mt-6" style="font-family: 'Arial', sans-serif;">Shop smarter with hand-picked daily packages and real-time pricing.</p>
         </div>
@@ -41,12 +50,14 @@ $featuredPackages = getFeaturedPackages(6);
                 <p class="text-sm font-bold text-black">Suggested:</p>
                 <!-- <div class="flex flex-wrap gap-2"> -->
                     <?php 
-                    $suggestedItems = ['Veges', 'Fruit', 'Juices and Smoothies', 'Grocery', 'Meat'];
-                    foreach ($suggestedItems as $item): ?>
-                        <button onclick="searchSuggestedItem('<?php echo htmlspecialchars($item); ?>')" class="px-4 py-1.5 bg-gray-300 text-black rounded-2xl text-sm hover:bg-green-200 transition">
-                            <?php echo htmlspecialchars($item); ?>
-                        </button>
+                    $suggestedItems = getSuggestedCategories(); // implement this
+                     foreach ($suggestedItems as $item): ?>
+                        <a href="<?= BASE_PATH ?>/category?name=<?= urlencode($item) ?>"
+                           class="px-4 py-1.5 bg-gray-300 text-black rounded-2xl text-sm hover:bg-green-200 transition">
+                            <?= htmlspecialchars($item) ?>
+                        </a>
                     <?php endforeach; ?>
+                    
                 <!-- </div> -->
             </div>
         </div>
@@ -70,6 +81,27 @@ $featuredPackages = getFeaturedPackages(6);
             </div>
         </div> -->
     </section>
+
+    <!-- Dynamic Text Section -->
+    <?php 
+    $dynamicTexts = getActiveDynamicTexts();
+    if (!empty($dynamicTexts)): 
+    ?>
+    <section class="px-6 py-10 bg-white">
+        <div class="max-w-6xl mx-auto">
+            <?php foreach ($dynamicTexts as $text): ?>
+                <div class="mb-8 last:mb-0">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-800 mb-4 text-center" style="font-family: 'Arial', sans-serif;">
+                        <?php echo htmlspecialchars($text['title']); ?>
+                    </h2>
+                    <div class="text-gray-700 text-lg leading-relaxed text-center" style="font-family: 'Arial', sans-serif;">
+                        <?php echo nl2br(htmlspecialchars($text['content'])); ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </section>
+    <?php endif; ?>
 
     <!-- Explore Categories -->
     <section class="px-6 py-8 bg-white">
@@ -166,7 +198,7 @@ $featuredPackages = getFeaturedPackages(6);
     </section>
 
     <!-- Featured Products -->
-    <section class="px-6 py-10 bg-gray-50">
+    <section id="featured-products" class="px-6 py-10 bg-gray-50">
         <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
             <h3 class="text-xl md:text-2xl font-bold text-gray-800" style="font-family: 'Arial', sans-serif;">Featured Products</h3>
             
@@ -283,7 +315,7 @@ $featuredPackages = getFeaturedPackages(6);
     </section>
 
     <!-- Daily Packages -->
-    <section class="px-6 py-10 bg-white">
+    <section id="daily-packages" class="px-6 py-10 bg-white">
         <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
             <h3 class="text-xl md:text-2xl font-bold text-gray-800" style="font-family: 'Arial', sans-serif;">Daily Packages</h3>
             
@@ -549,6 +581,20 @@ function updateQuantity(productId, change) {
 function toggleWishlist(itemId) {
     // Placeholder for wishlist functionality
     console.log('Toggle wishlist for item:', itemId);
+}
+
+function scrollToFeaturedProducts() {
+    const section = document.getElementById('featured-products');
+    if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function scrollToDailyPackages() {
+    const section = document.getElementById('daily-packages');
+    if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 function performHeroSearch() {

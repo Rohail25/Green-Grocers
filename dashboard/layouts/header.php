@@ -2,12 +2,16 @@
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
+$currentUser = getCurrentUser();
 $currentPath = $_SERVER['REQUEST_URI'];
 $active = 'Dashboard';
 if (strpos($currentPath, '/products') !== false) $active = 'Products';
 elseif (strpos($currentPath, '/packages') !== false) $active = 'Daily Packages';
 elseif (strpos($currentPath, '/orders') !== false) $active = 'Orders';
 elseif (strpos($currentPath, '/featured-products') !== false) $active = 'Featured Products';
+elseif (strpos($currentPath, '/users') !== false) $active = 'Users';
+elseif (strpos($currentPath, '/change-password') !== false) $active = 'Change Password';
+elseif (strpos($currentPath, '/dynamic-texts') !== false) $active = 'Dynamic Texts';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -63,6 +67,20 @@ elseif (strpos($currentPath, '/featured-products') !== false) $active = 'Feature
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
                 <span>Featured Products</span>
             </a>
+            <?php if ($currentUser['role'] === 'admin'): ?>
+            <a href="<?php echo BASE_PATH; ?>/dashboard/pages/users.php" class="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-lg font-semibold transition <?php echo $active === 'Users' ? 'text-green-600 border border-gray-200 bg-green-50' : 'text-gray-700 hover:bg-gray-100'; ?>">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                <span>Users</span>
+            </a>
+            <a href="<?php echo BASE_PATH; ?>/dashboard/pages/change-password.php" class="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-lg font-semibold transition <?php echo $active === 'Change Password' ? 'text-green-600 border border-gray-200 bg-green-50' : 'text-gray-700 hover:bg-gray-100'; ?>">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                <span>Change Password</span>
+            </a>
+            <a href="<?php echo BASE_PATH; ?>/dashboard/pages/dynamic-texts.php" class="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-lg font-semibold transition <?php echo $active === 'Dynamic Texts' ? 'text-green-600 border border-gray-200 bg-green-50' : 'text-gray-700 hover:bg-gray-100'; ?>">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+                <span>Dynamic Texts</span>
+            </a>
+            <?php endif; ?>
         </nav>
     </aside>
 

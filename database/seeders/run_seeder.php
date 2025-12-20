@@ -29,7 +29,20 @@ echo "<!DOCTYPE html>
     <h1>🌱 Database Seeder</h1>
     <pre>";
 
-// Run category seeder first
+// Run admin seeder first
+echo "Running Admin Seeder...\n";
+echo str_repeat("=", 60) . "\n";
+
+try {
+    require_once __DIR__ . '/admin_seeder.php';
+} catch (Exception $e) {
+    echo "\n❌ Fatal Error in Admin Seeder: " . $e->getMessage() . "\n";
+    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+}
+
+echo "\n\n";
+
+// Run category seeder
 echo "Running Category Seeder...\n";
 echo str_repeat("=", 60) . "\n";
 
@@ -61,31 +74,3 @@ echo "</pre>
 
 ob_end_flush();
 ?>
-
-
-    echo "\n❌ Fatal Error in Category Seeder: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
-}
-
-echo "\n\n";
-
-// Run user seeder
-echo "Running User Seeder...\n";
-echo str_repeat("=", 60) . "\n";
-
-try {
-    require_once __DIR__ . '/user_seeder.php';
-} catch (Exception $e) {
-    echo "\n❌ Fatal Error in User Seeder: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
-}
-
-echo "</pre>
-    <p><a href='../../index.php'>← Back to Home</a></p>
-    <p><a href='run_seeder.php'>🔄 Run Seeder Again</a></p>
-</body>
-</html>";
-
-ob_end_flush();
-?>
-

@@ -1,48 +1,94 @@
 <?php
 // Allow direct access to public folder files
-$request = $_SERVER['REQUEST_URI'];
-$path = parse_url($request, PHP_URL_PATH);
+// $request = $_SERVER['REQUEST_URI'];
+// $path = parse_url($request, PHP_URL_PATH);
 
-// Check if request is for a public file (images, CSS, JS)
-if (preg_match('#^/green-grocers/public/#', $path) || preg_match('#^/public/#', $path)) {
-    $filePath = __DIR__ . '/public/' . basename($path);
-    if (file_exists($filePath)) {
-        $mimeTypes = [
-            'png' => 'image/png',
-            'jpg' => 'image/jpeg',
-            'jpeg' => 'image/jpeg',
-            'gif' => 'image/gif',
-            'svg' => 'image/svg+xml',
-            'css' => 'text/css',
-            'js' => 'application/javascript'
-        ];
-        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
-        header('Content-Type: ' . $mime);
-        readfile($filePath);
-        exit;
-    }
-}
+// // Check if request is for a public file (images, CSS, JS)
+// if (preg_match('#^/green-grocers/public/#', $path) || preg_match('#^/public/#', $path)) {
+//     $filePath = __DIR__ . '/public/' . basename($path);
+//     if (file_exists($filePath)) {
+//         $mimeTypes = [
+//             'png' => 'image/png',
+//             'jpg' => 'image/jpeg',
+//             'jpeg' => 'image/jpeg',
+//             'gif' => 'image/gif',
+//             'svg' => 'image/svg+xml',
+//             'css' => 'text/css',
+//             'js' => 'application/javascript'
+//         ];
+//         $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+//         $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
+//         header('Content-Type: ' . $mime);
+//         readfile($filePath);
+//         exit;
+//     }
+// }
 
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/config.php'; // Define BASE_PATH
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
-// Simple routing
-$path = str_replace('/green-grocers', '', $path);
-$path = ltrim($path, '/');
-$path = str_replace('index.php', '', $path);
-$path = trim($path, '/');
 
-// Debug: Log the path for troubleshooting (remove in production)
-// error_log("Routing path: " . $path);
+// // Simple routing
+// $path = str_replace('/green-grocers', '', $path);
+// $path = ltrim($path, '/');
+// $path = str_replace('index.php', '', $path);
+// $path = trim($path, '/');
+
+// // Remove query string if present
+// $path = strtok($path, '?');
+
+// // Remove trailing slash
+// $path = rtrim($path, '/');
+
+// Debug: Log the path for troubleshooting
+// error_log("Routing - Original REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'N/A'));
+// error_log("Routing - Parsed path: " . $path);
+// error_log("Routing - GET params: " . print_r($_GET, true));
+
+
+$request = $_SERVER['REQUEST_URI'];
+$path = parse_url($request, PHP_URL_PATH);
+
+// Remove BASE_PATH
+$basePath = defined('BASE_PATH') ? BASE_PATH : '';
+if ($basePath && strpos($path, $basePath) === 0) {
+    $path = substr($path, strlen($basePath));
+}
+
+$path = trim($path, '/');
+$path = strtok($path, '?');
 
 // Route handling
 if (empty($path) || $path === 'index.php') {
     require_once __DIR__ . '/website/pages/landing.php';
-} elseif ($path === 'category') {
-    require_once __DIR__ . '/website/pages/category.php';
+    exit;
+} elseif ($path === 'categories' ) {
+    // Check categories FIRST before category (to avoid matching 'categories' with 'category' route)
+    // Also handle direct file access to categories.php
+    require  __DIR__ . '/website/pages/categories.php';
+    // if (file_exists($categoriesFile)) {
+    //     require_once $categoriesFile;
+    //     exit;
+    // } else { 
+    //     error_log("Categories file not found: " . $categoriesFile);
+    //     header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '/green-grocers') . '/');
+    //     exit;
+    // }
+} elseif ($path === 'category' || $path === 'website/pages/category.php') {
+    // Route for category page (with optional name or search query parameters)
+    // This handles search results and individual category pages
+    // IMPORTANT: This must come AFTER 'categories' route to avoid matching conflicts
+    $categoryFile = __DIR__ . '/website/pages/category.php';
+    if (file_exists($categoryFile)) {
+        require_once $categoryFile;
+        exit;
+    } else {
+        error_log("Category file not found: " . $categoryFile);
+        header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '/green-grocers') . '/');
+        exit;
+    }
 } elseif ($path === 'auth/login.php') {
     require_once __DIR__ . '/auth/login.php';
 } elseif ($path === 'auth/register.php') {
@@ -114,4 +160,3 @@ if (empty($path) || $path === 'index.php') {
     }
 }
 ?>
-

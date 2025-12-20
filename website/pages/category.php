@@ -7,10 +7,16 @@ require_once __DIR__ . '/../../includes/functions.php';
 $categoryName = $_GET['name'] ?? 'Vegetables';
 $searchQuery = isset($_GET['search']) ? trim($_GET['search']) : '';
 
+// Debug: Log search query for troubleshooting
+error_log("Category Page - Search Query: '" . $searchQuery . "' | Category Name: '" . $categoryName . "'");
+error_log("Category Page - GET params: " . print_r($_GET, true));
+
 // If search query is provided, search products; otherwise get by category
 if (!empty($searchQuery)) {
     $products = searchProducts($searchQuery);
     $pageTitle = 'Search Results for "' . htmlspecialchars($searchQuery) . '" - Green Grocers';
+    // Debug: Log search results count
+    error_log("Search Results Count: " . count($products));
 } else {
     $products = getProductsByCategory($categoryName);
 }

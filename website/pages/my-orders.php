@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/encryption.php';
 
 requireAuth();
 $currentUser = getCurrentUser();
@@ -11,7 +12,7 @@ $pageTitle = 'My Orders';
 // Get all orders for the current customer
 $conn = getDBConnection();
 $stmt = $conn->prepare("
-    SELECT o.*, u.firstName, u.lastName, u.email 
+    SELECT o.*, u.firstName, u.lastName, u.email, u.phone 
     FROM orders o 
     LEFT JOIN users u ON o.userId = u.id 
     WHERE o.userId = :userId
@@ -20,6 +21,14 @@ $stmt = $conn->prepare("
 $stmt->execute([':userId' => $currentUser['id']]);
 $orders = [];
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    // Decrypt email and phone for user viewing their own orders
+    if (!empty($row['email'])) {
+        $row['email'] = decryptEmail($row['email']);
+    }
+    if (!empty($row['phone'])) {
+        $row['phone'] = decryptPhone($row['phone']);
+    }
+    
     // Decode JSON fields
     $row['items'] = !empty($row['items']) ? json_decode($row['items'], true) : [];
     $row['shippingAddress'] = !empty($row['shippingAddress']) ? json_decode($row['shippingAddress'], true) : null;
@@ -77,7 +86,7 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                 </p>
                             </div>
                             <div class="flex gap-2">
-                                <button onclick="viewOrderDetails('<?php echo htmlspecialchars($order['id']); ?>')" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm" style="font-family: 'Arial', sans-serif;">View Details</button>
+                                <button class="view-details-btn px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm" data-order-id="<?php echo htmlspecialchars($order['id']); ?>" style="font-family: 'Arial', sans-serif;">View Details</button>
                             </div>
                         </div>
                         
@@ -123,29 +132,50 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
 </div>
 
 <!-- Order Details Modal -->
-<div id="orderDetailsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+<div id="orderDetailsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style="z-index: 9999;">
+    <div class="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 relative" style="z-index: 10000; margin: auto;">
         <div class="flex items-center justify-between mb-6">
             <h2 class="text-2xl font-bold text-gray-800" style="font-family: 'Arial', sans-serif;">Order Details</h2>
-            <button onclick="closeOrderDetailsModal()" class="text-gray-500 hover:text-gray-700">
+            <button onclick="closeOrderDetailsModal()" class="text-gray-500 hover:text-gray-700" type="button">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
             </button>
         </div>
-        <div id="orderDetailsContent"></div>
+        <div id="orderDetailsContent">
+            <p class="text-center text-gray-500">Loading order details...</p>
+        </div>
     </div>
 </div>
 
 <script>
-const orders = <?php echo json_encode($orders); ?>;
+const orders = <?php echo json_encode($orders, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+console.log('Orders loaded:', orders.length, 'orders');
 
 function viewOrderDetails(orderId) {
-    const order = orders.find(o => o.id === orderId);
+    console.log('=== View Order Details Called ===');
+    console.log('Order ID received:', orderId, 'Type:', typeof orderId);
+    console.log('Total orders:', orders.length);
+    console.log('Available orders:', orders);
+    console.log('Order IDs in array:', orders.map(o => ({ id: o.id, type: typeof o.id })));
+    
+    // Normalize orderId to string for comparison
+    const searchId = String(orderId);
+    
+    // Try to find order by multiple methods
+    let order = orders.find(o => {
+        const oId = String(o.id);
+        return oId === searchId || o.id === orderId || o.id == orderId;
+    });
+    
     if (!order) {
-        alert('Order not found');
+        alert('Order not found. Order ID: ' + orderId + '\n\nAvailable IDs: ' + orders.map(o => o.id).join(', '));
+        console.error('Order not found in array. Looking for:', orderId, 'Type:', typeof orderId);
+        console.error('Available IDs:', orders.map(o => ({ id: o.id, type: typeof o.id })));
         return;
     }
+    
+    console.log('Found order:', order);
     
     const orderNumber = order.orderNumber || (order.id.substring(0, 8) + '...');
     const status = order.status || 'Pending';
@@ -186,10 +216,27 @@ function viewOrderDetails(orderId) {
         });
         itemsHtml += '</div>';
     } else {
-        itemsHtml = '<p class="text-gray-500 mb-6" style="font-family: 'Arial', sans-serif;">No items found</p>';
+        itemsHtml = '<p class="text-gray-500 mb-6" style="font-family: \'Arial\', sans-serif;">No items found</p>';
     }
     
-    const addressText = shippingAddress.street || 'N/A';
+    // Format shipping address properly
+    let addressText = 'N/A';
+    if (shippingAddress && typeof shippingAddress === 'object') {
+        const addressParts = [];
+        if (shippingAddress.street) addressParts.push(shippingAddress.street);
+        if (shippingAddress.city) addressParts.push(shippingAddress.city);
+        if (shippingAddress.state) addressParts.push(shippingAddress.state);
+        if (shippingAddress.zipCode || shippingAddress.zip) addressParts.push(shippingAddress.zipCode || shippingAddress.zip);
+        if (shippingAddress.country) addressParts.push(shippingAddress.country);
+        addressText = addressParts.length > 0 ? addressParts.join(', ') : (shippingAddress.street || 'N/A');
+    }
+    
+    // Normalize status for comparison
+    const statusLower = String(status).toLowerCase();
+    const statusClass = statusLower === 'delivered' ? 'bg-green-100 text-green-800' : 
+                       (statusLower === 'canceled' || statusLower === 'cancelled' ? 'bg-red-100 text-red-800' : 
+                       (statusLower === 'assigned' || statusLower === 'dispatched' ? 'bg-blue-100 text-blue-800' : 
+                       'bg-yellow-100 text-yellow-800'));
     
     const content = `
         <div class="space-y-4">
@@ -204,7 +251,7 @@ function viewOrderDetails(orderId) {
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 mb-1" style="font-family: 'Arial', sans-serif;">Status</p>
-                    <span class="inline-block px-3 py-1 rounded-full text-xs font-medium ${status === 'delivered' ? 'bg-green-100 text-green-800' : (status === 'canceled' ? 'bg-red-100 text-red-800' : (status === 'assigned' || status === 'dispatched' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'))}" style="font-family: 'Arial', sans-serif;">
+                    <span class="inline-block px-3 py-1 rounded-full text-xs font-medium ${statusClass}" style="font-family: 'Arial', sans-serif;">
                         ${status.charAt(0).toUpperCase() + status.slice(1)}
                     </span>
                 </div>
@@ -217,7 +264,7 @@ function viewOrderDetails(orderId) {
             <div class="border-t border-gray-200 pt-4">
                 <h3 class="font-semibold text-gray-800 mb-3" style="font-family: 'Arial', sans-serif;">Shipping Address</h3>
                 <p class="text-gray-700" style="font-family: 'Arial', sans-serif;">${addressText}</p>
-                ${shippingAddress.phone ? `<p class="text-gray-700 mt-1" style="font-family: 'Arial', sans-serif;">Phone: ${shippingAddress.phone}</p>` : ''}
+                ${shippingAddress && shippingAddress.phone ? `<p class="text-gray-700 mt-1" style="font-family: 'Arial', sans-serif;">Phone: ${shippingAddress.phone}</p>` : ''}
             </div>
             
             <div class="border-t border-gray-200 pt-4">
@@ -234,13 +281,79 @@ function viewOrderDetails(orderId) {
         </div>
     `;
     
-    document.getElementById('orderDetailsContent').innerHTML = content;
-    document.getElementById('orderDetailsModal').classList.remove('hidden');
+    const contentDiv = document.getElementById('orderDetailsContent');
+    const modal = document.getElementById('orderDetailsModal');
+    
+    if (!contentDiv) {
+        console.error('Content div not found!');
+        alert('Error: Content div not found');
+        return;
+    }
+    
+    if (!modal) {
+        console.error('Modal element not found!');
+        alert('Error: Modal element not found');
+        return;
+    }
+    
+    contentDiv.innerHTML = content;
+    
+    // Remove hidden class and ensure display
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    modal.style.visibility = 'visible';
+    modal.style.opacity = '1';
+    modal.style.zIndex = '9999';
+    document.body.style.overflow = 'hidden';
+    
+    console.log('Modal displayed successfully');
 }
 
 function closeOrderDetailsModal() {
-    document.getElementById('orderDetailsModal').classList.add('hidden');
+    const modal = document.getElementById('orderDetailsModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        modal.style.visibility = 'hidden';
+        modal.style.opacity = '0';
+        document.body.style.overflow = ''; // Restore scrolling
+    }
 }
+
+// Close modal when clicking outside
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listeners to all View Details buttons
+    const viewDetailsButtons = document.querySelectorAll('.view-details-btn');
+    viewDetailsButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const orderId = this.getAttribute('data-order-id');
+            console.log('Button clicked, order ID:', orderId);
+            if (orderId) {
+                viewOrderDetails(orderId);
+            } else {
+                console.error('No order ID found on button');
+                alert('Error: Order ID not found');
+            }
+        });
+    });
+    
+    const modal = document.getElementById('orderDetailsModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeOrderDetailsModal();
+            }
+        });
+        
+        // Close on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closeOrderDetailsModal();
+            }
+        });
+    }
+});
 </script>
 
 <?php require_once __DIR__ . '/../layouts/footer.php'; ?>

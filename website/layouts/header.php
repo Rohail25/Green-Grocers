@@ -34,7 +34,7 @@ $isAuthenticated = isAuthenticated();
     <!-- Nav Links - Desktop -->
     <div class="hidden md:flex gap-6 items-center">
         <a href="<?php echo BASE_PATH; ?>/" class="text-md font-normal text-black">Home</a>
-        <a href="<?php echo BASE_PATH; ?>/category?name=Vegetables" class="text-md font-normal text-gray-500 hover:text-black">Categories</a>
+        <a href="<?php echo BASE_PATH; ?>/categories" class="text-md font-normal text-gray-500 hover:text-black">Categories</a>
         <a href="#" class="text-md font-normal text-gray-500 hover:text-black">Daily Packages</a>
     </div>
 
@@ -129,7 +129,7 @@ $isAuthenticated = isAuthenticated();
     <!-- Mobile Menu Panel -->
     <div id="mobile-menu" class="hidden absolute top-full left-0 w-full bg-white shadow-md flex flex-col items-center gap-4 py-6 md:hidden z-40">
         <a href="<?php echo BASE_PATH; ?>/" class="text-lg font-bold text-black">Home</a>
-        <a href="<?php echo BASE_PATH; ?>/category?name=Vegetables" class="text-lg font-bold text-gray-500 hover:text-black">Categories</a>
+        <a href="<?php echo BASE_PATH; ?>/categories" class="text-lg font-bold text-gray-500 hover:text-black">Categories</a>
         <a href="#" class="text-lg font-bold text-gray-500 hover:text-black">Daily Packages</a>
         
         <?php if ($isAuthenticated): ?>

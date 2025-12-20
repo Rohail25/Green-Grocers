@@ -68,6 +68,7 @@ function getFeaturedProducts($limit = 6) {
     return $products;
 }
 
+
 // Match Node.js: getProductsByCategoryName
 function getProductsByCategory($categoryName) {
     $conn = getDBConnection();
@@ -93,6 +94,20 @@ function getProductsByCategory($categoryName) {
         $products[] = $row;
     }
     return $products;
+}
+
+function getSuggestedCategories(int $limit = 5): array {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare("
+        SELECT title 
+        FROM categories 
+        ORDER BY title ASC 
+        LIMIT :lim
+    ");
+    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
 // Search products by name (supports partial matching, case-insensitive)
@@ -252,17 +267,126 @@ function getAllPackages() {
     return $packages;
 }
 
-// Match Node.js: getAllOrders
-function getAllOrders() {
+// Get all users (admin only)
+// Note: Email and phone remain encrypted in admin view for security
+// Only individual users see their own decrypted data
+function getAllUsers() {
+    require_once __DIR__ . '/encryption.php';
     $conn = getDBConnection();
     $stmt = $conn->query("
-        SELECT o.*, u.firstName, u.lastName, u.email 
+        SELECT id, email, firstName, lastName, role, platform, phone, 
+               vendorId, clientId, isEmailConfirmed, isVerified, created_at, updated_at
+        FROM users 
+        ORDER BY created_at DESC
+    ");
+    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Decrypt email and phone for each user (admin viewing)
+    foreach ($users as &$user) {
+        $user['email'] = decryptEmail($user['email']);
+        $user['phone'] = decryptPhone($user['phone']);
+    }
+    
+    return $users;
+}
+
+// Get single user by ID
+// Note: Returns encrypted data - caller should decrypt if needed
+function getUserById($userId) {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare("
+        SELECT id, email, firstName, lastName, role, platform, phone, 
+               vendorId, clientId, isEmailConfirmed, isVerified, created_at, updated_at
+        FROM users 
+        WHERE id = :id
+    ");
+    $stmt->execute([':id' => $userId]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+// Get all active dynamic texts
+function getActiveDynamicTexts() {
+    $conn = getDBConnection();
+    // Create table if it doesn't exist
+    try {
+        $conn->exec("
+            CREATE TABLE IF NOT EXISTS dynamic_texts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                position INT DEFAULT 0,
+                is_active TINYINT(1) DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        ");
+    } catch (PDOException $e) {
+        // Table might already exist, continue
+    }
+    
+    $stmt = $conn->query("
+        SELECT * FROM dynamic_texts 
+        WHERE is_active = 1 
+        ORDER BY position ASC, created_at DESC
+    ");
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Get all dynamic texts (admin)
+function getAllDynamicTexts() {
+    $conn = getDBConnection();
+    // Create table if it doesn't exist
+    try {
+        $conn->exec("
+            CREATE TABLE IF NOT EXISTS dynamic_texts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                position INT DEFAULT 0,
+                is_active TINYINT(1) DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        ");
+    } catch (PDOException $e) {
+        // Table might already exist, continue
+    }
+    
+    $stmt = $conn->query("
+        SELECT * FROM dynamic_texts 
+        ORDER BY position ASC, created_at DESC
+    ");
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Get single dynamic text by ID
+function getDynamicTextById($id) {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare("SELECT * FROM dynamic_texts WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+// Match Node.js: getAllOrders
+function getAllOrders() {
+    require_once __DIR__ . '/encryption.php';
+    $conn = getDBConnection();
+    $stmt = $conn->query("
+        SELECT o.*, u.firstName, u.lastName, u.email, u.phone 
         FROM orders o 
         LEFT JOIN users u ON o.userId = u.id 
         ORDER BY o.created_at DESC
     ");
     $orders = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        // Decrypt email and phone for display
+        if (!empty($row['email'])) {
+            $row['email'] = decryptEmail($row['email']);
+        }
+        if (!empty($row['phone'])) {
+            $row['phone'] = decryptPhone($row['phone']);
+        }
+        
         // Match Node.js: decode JSON fields
         $row['items'] = !empty($row['items']) ? json_decode($row['items'], true) : [];
         $row['shippingAddress'] = !empty($row['shippingAddress']) ? json_decode($row['shippingAddress'], true) : null;

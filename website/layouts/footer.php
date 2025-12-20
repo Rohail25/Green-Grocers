@@ -39,7 +39,7 @@ require_once __DIR__ . '/../../includes/functions.php';
             <h3 class="text-lg font-semibold mb-6">Website Links</h3>
             <ul class="space-y-3">
                 <li><a href="<?php echo BASE_PATH; ?>/" class="hover:underline">Home</a></li>
-                <li><a href="<?php echo BASE_PATH; ?>/category?name=Vegetables" class="hover:underline">Categories</a></li>
+                <li><a href="<?php echo BASE_PATH; ?>/categories" class="hover:underline">Categories</a></li>
                 <li><a href="#" class="hover:underline">Packages</a></li>
                 <li><a href="#" class="hover:underline">FAQs</a></li>
             </ul>

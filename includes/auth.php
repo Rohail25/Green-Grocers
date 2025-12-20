@@ -1,6 +1,8 @@
 <?php
 // Authentication Helper Functions - Matching Node.js Backend Flow
 
+require_once __DIR__ . '/encryption.php';
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -31,38 +33,283 @@ function loginUser($email, $password, $platform = 'trivemart') {
     
     try {
         // Step 1: Match Node.js - Find user by email AND platform (or phone if email not provided)
+        // Try both encrypted and plain text email for backward compatibility
         $user = null;
         if ($email) {
-            // Try with COALESCE first, if it fails, try without it
+            $normalizedEmail = strtolower(trim($email));
+            $encryptedEmail = encryptEmail($normalizedEmail);
+            
+            error_log("Login attempt - Email: " . $normalizedEmail . ", Platform: " . $platform);
+            error_log("Login - Encrypted email: " . substr($encryptedEmail, 0, 50) . "...");
+            
+            // First, try to find user with encrypted email (new users) - WITH platform
+            // Use simple query first to avoid COALESCE issues with missing columns
             try {
-                $stmt = $conn->prepare("SELECT *, COALESCE(isEmailConfirmed, is_email_confirmed, 0) as email_confirmed_status FROM users WHERE email = :email AND platform = :platform");
+                $stmt = $conn->prepare("SELECT * FROM users WHERE email = :email AND platform = :platform");
                 $stmt->execute([
-                    ':email' => strtolower(trim($email)),
+                    ':email' => $encryptedEmail,
                     ':platform' => $platform
                 ]);
                 $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($user) {
+                    error_log("Login: Found user with encrypted email and platform match");
+                    error_log("Login: User ID: " . ($user['id'] ?? 'unknown') . ", Role: " . ($user['role'] ?? 'unknown'));
+                    // Add email_confirmed_status to user array for consistency
+                    $user['email_confirmed_status'] = $user['isEmailConfirmed'] ?? 0;
+                } else {
+                    error_log("Login: No user found with encrypted email: " . substr($encryptedEmail, 0, 30) . "... and platform: " . $platform);
+                }
             } catch (PDOException $e) {
-                // If COALESCE fails (column doesn't exist), try without it
-                error_log("Login: COALESCE query failed, trying simple query - " . $e->getMessage());
+                error_log("Login: Query failed - " . $e->getMessage());
+            }
+            
+            // If not found, try WITHOUT platform restriction (in case platform is wrong)
+            if (!$user) {
+                error_log("Login: Trying search without platform restriction...");
+                try {
+                    $stmt = $conn->prepare("SELECT * FROM users WHERE email = :email");
+                    $stmt->execute([':email' => $encryptedEmail]);
+                    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($user) {
+                        error_log("Login: Found user with encrypted email (no platform restriction). User platform: " . ($user['platform'] ?? 'unknown'));
+                        error_log("Login: User ID: " . ($user['id'] ?? 'unknown') . ", Role: " . ($user['role'] ?? 'unknown'));
+                        // Add email_confirmed_status to user array
+                        $user['email_confirmed_status'] = $user['isEmailConfirmed'] ?? 0;
+                        // Update platform if it was wrong
+                        if (($user['platform'] ?? '') !== $platform) {
+                            error_log("Login: Platform mismatch detected. User platform: " . ($user['platform'] ?? 'unknown') . ", Login platform: " . $platform);
+                            $platform = $user['platform'] ?? $platform;
+                        }
+                    } else {
+                        error_log("Login: No user found even without platform restriction");
+                    }
+                } catch (PDOException $e) {
+                    error_log("Login: Query without platform failed - " . $e->getMessage());
+                }
+            }
+            
+            // If not found with deterministic encrypted email, try plain text (for backward compatibility)
+            if (!$user) {
                 try {
                     $stmt = $conn->prepare("SELECT * FROM users WHERE email = :email AND platform = :platform");
                     $stmt->execute([
-                        ':email' => strtolower(trim($email)),
+                        ':email' => $normalizedEmail,
                         ':platform' => $platform
                     ]);
                     $user = $stmt->fetch(PDO::FETCH_ASSOC);
-                } catch (PDOException $e2) {
-                    error_log("Login: Simple query also failed - " . $e2->getMessage());
-                    throw $e2;
+                    
+                    // If found with plain text, encrypt email and phone (if phone exists and is plain text)
+                    if ($user) {
+                        error_log("Login: Found user with plain text email, encrypting and updating...");
+                        // Add email_confirmed_status to user array
+                        $user['email_confirmed_status'] = $user['isEmailConfirmed'] ?? 0;
+                        
+                        $updates = [':encryptedEmail' => $encryptedEmail, ':id' => $user['id']];
+                        $updateFields = ['email = :encryptedEmail'];
+                        
+                        // Check if phone needs encryption
+                        if (!empty($user['phone']) && !isEncrypted($user['phone'])) {
+                            $encryptedPhone = encryptPhone($user['phone']);
+                            $updates[':encryptedPhone'] = $encryptedPhone;
+                            $updateFields[] = 'phone = :encryptedPhone';
+                            $user['phone'] = $encryptedPhone;
+                        }
+                        
+                        $updateStmt = $conn->prepare("UPDATE users SET " . implode(', ', $updateFields) . " WHERE id = :id");
+                        $updateStmt->execute($updates);
+                        // Update the user array with encrypted email
+                        $user['email'] = $encryptedEmail;
+                    }
+                } catch (PDOException $e) {
+                    error_log("Login: Plain text query failed - " . $e->getMessage());
+                }
+            }
+            
+            // If still not found, try to find users by decrypting and comparing (across ALL platforms)
+            // This handles users created before we switched to deterministic encryption
+            // Also handles cases where platform detection was wrong
+            if (!$user) {
+                try {
+                    error_log("Login: Trying final fallback - searching all users by decrypting emails...");
+                    // Get all users (limit to reasonable number for performance)
+                    // Try current platform first, then all platforms
+                    $searchPlatforms = [$platform, null]; // Try current platform, then all
+                    
+                    foreach ($searchPlatforms as $searchPlatform) {
+                        if ($searchPlatform) {
+                            $stmt = $conn->prepare("SELECT * FROM users WHERE platform = :platform LIMIT 200");
+                            $stmt->execute([':platform' => $searchPlatform]);
+                        } else {
+                            $stmt = $conn->query("SELECT * FROM users LIMIT 200");
+                        }
+                        $allUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        // Add email_confirmed_status to each user
+                        foreach ($allUsers as &$u) {
+                            $u['email_confirmed_status'] = $u['isEmailConfirmed'] ?? 0;
+                        }
+                        unset($u); // Break reference
+                        
+                        error_log("Login: Checking " . count($allUsers) . " users in " . ($searchPlatform ? "platform: {$searchPlatform}" : "all platforms"));
+                        
+                        // Try to decrypt each email and compare
+                        foreach ($allUsers as $potentialUser) {
+                            if (empty($potentialUser['email'])) {
+                                continue;
+                            }
+                            
+                            // Try to decrypt (works for both encrypted and plain text)
+                            $decryptedStoredEmail = decryptEmail($potentialUser['email']);
+                            
+                            // Compare decrypted email with input email
+                            if (strtolower(trim($decryptedStoredEmail)) === $normalizedEmail) {
+                                $user = $potentialUser;
+                                $platform = $potentialUser['platform'] ?? $platform; // Update platform from found user
+                                error_log("Login: Found user by decrypting! User ID: " . ($user['id'] ?? 'unknown') . ", Platform: " . $platform);
+                                
+                                // Re-encrypt with deterministic method if needed
+                                if ($user['email'] !== $encryptedEmail) {
+                                    error_log("Login: Re-encrypting email with deterministic method...");
+                                    $updates = [':encryptedEmail' => $encryptedEmail, ':id' => $user['id']];
+                                    $updateFields = ['email = :encryptedEmail'];
+                                    
+                                    // Check if phone needs encryption
+                                    if (!empty($user['phone']) && isEncrypted($user['phone'])) {
+                                        $decryptedPhone = decryptPhone($user['phone']);
+                                        if (!empty($decryptedPhone)) {
+                                            $encryptedPhone = encryptPhone($decryptedPhone);
+                                            $updates[':encryptedPhone'] = $encryptedPhone;
+                                            $updateFields[] = 'phone = :encryptedPhone';
+                                            $user['phone'] = $encryptedPhone;
+                                        }
+                                    } elseif (!empty($user['phone']) && !isEncrypted($user['phone'])) {
+                                        $encryptedPhone = encryptPhone($user['phone']);
+                                        $updates[':encryptedPhone'] = $encryptedPhone;
+                                        $updateFields[] = 'phone = :encryptedPhone';
+                                        $user['phone'] = $encryptedPhone;
+                                    }
+                                    
+                                    $updateStmt = $conn->prepare("UPDATE users SET " . implode(', ', $updateFields) . " WHERE id = :id");
+                                    $updateStmt->execute($updates);
+                                }
+                                
+                                // Update the user array with encrypted email
+                                $user['email'] = $encryptedEmail;
+                                break 2; // Found the user, stop searching both loops
+                            }
+                        }
+                        
+                        // If found, break outer loop
+                        if ($user) {
+                            break;
+                        }
+                    }
+                } catch (PDOException $e) {
+                    error_log("Login: Fallback decryption search failed - " . $e->getMessage());
+                } catch (Exception $e) {
+                    error_log("Login: Fallback search exception - " . $e->getMessage());
                 }
             }
         }
         
         // Step 2: Match Node.js - Check if user exists
         if (!$user) {
-            $_SESSION['error'] = 'User not found for this platform';
+            // Final attempt: Try to find ANY user with this email (decrypt all and compare)
+            error_log("Login: Final attempt - searching ALL users by decrypting emails (no limit)...");
+            try {
+                // Search ALL users without limit
+                $stmt = $conn->query("SELECT id, email, platform, role FROM users");
+                $allUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                error_log("Login: Checking " . count($allUsers) . " total users in final search...");
+                
+                $foundCount = 0;
+                foreach ($allUsers as $potentialUser) {
+                    if (empty($potentialUser['email'])) {
+                        continue;
+                    }
+                    
+                    $foundCount++;
+                    if ($foundCount % 10 == 0) {
+                        error_log("Login: Checked {$foundCount} users so far...");
+                    }
+                    
+                    $decrypted = decryptEmail($potentialUser['email']);
+                    if (strtolower(trim($decrypted)) === $normalizedEmail) {
+                        // Found! Get full user data with all fields
+                        error_log("Login: ✓✓✓ FOUND MATCHING USER BY DECRYPTING! ✓✓✓");
+                        error_log("Login: User ID: " . ($potentialUser['id'] ?? 'unknown'));
+                        error_log("Login: Decrypted email matches: {$decrypted}");
+                        
+                        $fullStmt = $conn->prepare("SELECT * FROM users WHERE id = :id");
+                        $fullStmt->execute([':id' => $potentialUser['id']]);
+                        $user = $fullStmt->fetch(PDO::FETCH_ASSOC);
+                        
+                        // Add email_confirmed_status to user array
+                        if ($user) {
+                            $user['email_confirmed_status'] = $user['isEmailConfirmed'] ?? 0;
+                        }
+                        
+                        if ($user) {
+                            $platform = $potentialUser['platform'] ?? $platform;
+                            error_log("Login: Full user data retrieved! User ID: " . ($user['id'] ?? 'unknown') . ", Platform: " . $platform);
+                            error_log("Login: Email confirmed status: " . var_export($user['email_confirmed_status'] ?? 'not set', true));
+                            
+                            // IMPORTANT: Re-encrypt with deterministic method and update database
+                            if ($user['email'] !== $encryptedEmail) {
+                                error_log("Login: Re-encrypting user email with deterministic method...");
+                                error_log("Login: Old email: " . substr($user['email'], 0, 40) . "...");
+                                error_log("Login: New email: " . substr($encryptedEmail, 0, 40) . "...");
+                                $reEncryptStmt = $conn->prepare("UPDATE users SET email = :email WHERE id = :id");
+                                $reEncryptStmt->execute([
+                                    ':email' => $encryptedEmail,
+                                    ':id' => $user['id']
+                                ]);
+                                $user['email'] = $encryptedEmail; // Update user array
+                                error_log("Login: Email re-encrypted successfully!");
+                            } else {
+                                error_log("Login: Email already using deterministic encryption");
+                            }
+                            break; // Found user, exit loop
+                        } else {
+                            error_log("Login: ERROR - Could not retrieve full user data after finding match!");
+                        }
+                    }
+                }
+                
+                if (!$user) {
+                    error_log("Login: ✗✗✗ User NOT found even after decrypting all " . count($allUsers) . " users ✗✗✗");
+                    error_log("Login: Searched email: {$normalizedEmail}");
+                    error_log("Login: Encrypted email searched: " . substr($encryptedEmail, 0, 40) . "...");
+                } else {
+                    error_log("Login: ✓✓✓ User found in final search! Proceeding with login... ✓✓✓");
+                }
+            } catch (Exception $e) {
+                error_log("Login: Final search failed - " . $e->getMessage());
+                error_log("Login: Exception trace: " . $e->getTraceAsString());
+            }
+        }
+        
+        if (!$user) {
+            error_log("Login failed: User not found. Email: " . ($email ?? 'empty') . ", Platform: " . $platform);
+            error_log("Login: Tried encrypted email: " . (isset($encryptedEmail) ? substr($encryptedEmail, 0, 50) . "..." : 'not set'));
+            error_log("Login: Tried normalized email: " . (isset($normalizedEmail) ? $normalizedEmail : 'not set'));
+            
+            // Check if user exists at all (for debugging)
+            try {
+                $checkStmt = $conn->query("SELECT COUNT(*) as count FROM users");
+                $count = $checkStmt->fetch(PDO::FETCH_ASSOC);
+                error_log("Login: Total users in database: " . ($count['count'] ?? 0));
+            } catch (Exception $e) {
+                error_log("Login: Could not check user count - " . $e->getMessage());
+            }
+            
+            $_SESSION['error'] = 'User not found. Please check your email and password.';
             return false;
         }
+        
+        error_log("Login: User found successfully. User ID: " . ($user['id'] ?? 'unknown'));
+        error_log("Login: User role: " . ($user['role'] ?? 'unknown'));
         
         // Step 3: Match Node.js - Check email confirmation (handle both column formats)
         // Use the COALESCE value from SQL query if available, or check both columns directly
@@ -71,14 +318,32 @@ function loginUser($email, $password, $platform = 'trivemart') {
         // First try the COALESCE result if it exists
         if (isset($user['email_confirmed_status'])) {
             $isEmailConfirmed = $user['email_confirmed_status'];
+            error_log("Login: Using email_confirmed_status from COALESCE: " . var_export($isEmailConfirmed, true));
         } 
         // Otherwise check both possible column names
         elseif (isset($user['isEmailConfirmed'])) {
             $isEmailConfirmed = $user['isEmailConfirmed'];
+            error_log("Login: Using isEmailConfirmed column: " . var_export($isEmailConfirmed, true));
         } elseif (isset($user['is_email_confirmed'])) {
             $isEmailConfirmed = $user['is_email_confirmed'];
+            error_log("Login: Using is_email_confirmed column: " . var_export($isEmailConfirmed, true));
         } else {
-            $isEmailConfirmed = 0;
+            // If not found in user array, query database directly
+            error_log("Login: Email confirmation not in user array, querying database...");
+            try {
+                $confirmStmt = $conn->prepare("SELECT isEmailConfirmed FROM users WHERE id = :id");
+                $confirmStmt->execute([':id' => $user['id']]);
+                $confirmData = $confirmStmt->fetch(PDO::FETCH_ASSOC);
+                if ($confirmData) {
+                    $isEmailConfirmed = $confirmData['isEmailConfirmed'] ?? 0;
+                    error_log("Login: Retrieved from database: " . var_export($isEmailConfirmed, true));
+                } else {
+                    $isEmailConfirmed = 0;
+                }
+            } catch (Exception $e) {
+                error_log("Login: Could not query email confirmation: " . $e->getMessage());
+                $isEmailConfirmed = 0;
+            }
         }
         
         // Check if confirmed: must be 1, '1', true, or non-zero
@@ -89,17 +354,32 @@ function loginUser($email, $password, $platform = 'trivemart') {
             $isConfirmed = true;
         }
         
+        error_log("Login: Email confirmation check - Value: " . var_export($isEmailConfirmed, true) . ", Is Confirmed: " . ($isConfirmed ? 'YES' : 'NO'));
+        
         if (!$isConfirmed) {
-            error_log("Login blocked: Email not confirmed for user " . ($user['email'] ?? 'unknown') . ". Value: " . var_export($isEmailConfirmed, true) . ", Raw: " . var_export([
-                'email_confirmed_status' => $user['email_confirmed_status'] ?? 'not set',
-                'isEmailConfirmed' => $user['isEmailConfirmed'] ?? 'not set',
-                'is_email_confirmed' => $user['is_email_confirmed'] ?? 'not set'
-            ], true));
-            $_SESSION['error'] = 'Please confirm your email first';
-            return false;
+            error_log("Login blocked: Email not confirmed for user " . ($user['id'] ?? 'unknown') . ". Value: " . var_export($isEmailConfirmed, true));
+            error_log("Login: Raw values - email_confirmed_status: " . var_export($user['email_confirmed_status'] ?? 'not set', true) . ", isEmailConfirmed: " . var_export($user['isEmailConfirmed'] ?? 'not set', true) . ", is_email_confirmed: " . var_export($user['is_email_confirmed'] ?? 'not set', true));
+            
+            // For admin users, auto-confirm email if not confirmed
+            if (($user['role'] ?? '') === 'admin') {
+                error_log("Login: Admin user email not confirmed, auto-confirming...");
+                try {
+                    $autoConfirmStmt = $conn->prepare("UPDATE users SET isEmailConfirmed = 1 WHERE id = :id");
+                    $autoConfirmStmt->execute([':id' => $user['id']]);
+                    $isConfirmed = true;
+                    error_log("Login: Admin email auto-confirmed!");
+                } catch (Exception $e) {
+                    error_log("Login: Failed to auto-confirm admin email: " . $e->getMessage());
+                }
+            }
+            
+            if (!$isConfirmed) {
+                $_SESSION['error'] = 'Please confirm your email first';
+                return false;
+            }
         }
         
-        error_log("Login: Email confirmed check passed for user " . ($user['email'] ?? 'unknown') . ". Value: " . var_export($isEmailConfirmed, true));
+        error_log("Login: Email confirmed check passed for user " . ($user['id'] ?? 'unknown'));
         
         // Step 4: Match Node.js - Check logistic/agent verification (BEFORE password check)
         if (in_array($user['role'], ['logistic', 'agent']) && !$user['isVerified']) {
@@ -144,10 +424,12 @@ function loginUser($email, $password, $platform = 'trivemart') {
         }
         
         // Step 7: Match Node.js - Set session (user data without password)
+        // Decrypt email for session (user should see their own decrypted email)
+        // decryptEmail() now handles both encrypted and plain text automatically
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user'] = [
             'id' => $user['id'],
-            'email' => $user['email'],
+            'email' => decryptEmail($user['email']), // Decrypt for user session (handles both encrypted and plain text)
             'firstName' => $user['firstName'] ?? $user['first_name'] ?? '',
             'lastName' => $user['lastName'] ?? $user['last_name'] ?? '',
             'role' => $user['role'],
@@ -190,9 +472,13 @@ function registerUser($userData) {
         return ['success' => false, 'message' => 'Passwords do not match'];
     }
     
-    // Match Node.js: check existing user by email AND platform
+    // Encrypt email and phone before storing
+    $encryptedEmail = encryptEmail($email);
+    $encryptedPhone = !empty($phone) ? encryptPhone($phone) : '';
+    
+    // Match Node.js: check existing user by email AND platform (compare encrypted emails)
     $stmt = $conn->prepare("SELECT id FROM users WHERE email = :email AND platform = :platform");
-    $stmt->execute([':email' => $email, ':platform' => $platform]);
+    $stmt->execute([':email' => $encryptedEmail, ':platform' => $platform]);
     if ($stmt->fetch()) {
         return ['success' => false, 'message' => 'Email already registered'];
     }
@@ -229,8 +515,8 @@ function registerUser($userData) {
     
     try {
         $stmt->execute([
-            ':email' => $email,
-            ':phone' => $phone,
+            ':email' => $encryptedEmail, // Store encrypted email
+            ':phone' => $encryptedPhone, // Store encrypted phone
             ':password' => $hashedPassword,
             ':firstName' => $firstName,
             ':lastName' => $lastName,
@@ -242,8 +528,9 @@ function registerUser($userData) {
         ]);
         
         // Get the user ID (for UUID(), we need to fetch it after insertion)
+        // Use encrypted email for lookup
         $stmt = $conn->prepare("SELECT id FROM users WHERE email = :email AND platform = :platform ORDER BY created_at DESC LIMIT 1");
-        $stmt->execute([':email' => $email, ':platform' => $platform]);
+        $stmt->execute([':email' => $encryptedEmail, ':platform' => $platform]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         $userId = $user['id'] ?? null;
         
@@ -258,6 +545,7 @@ function registerUser($userData) {
         
         // Send confirmation email asynchronously to speed up registration
         // Don't block registration process waiting for email
+        // Use decrypted email for sending (email is stored encrypted but we need plain text to send)
         require_once __DIR__ . '/email.php';
         
         // For faster registration, send email in background (if supported) or optimize SMTP
@@ -383,8 +671,8 @@ function confirmEmail($token) {
         // Wait a tiny bit to ensure database commit
         usleep(100000); // 0.1 seconds
         
-        // Verify the update was successful by querying again with COALESCE
-        $verifyStmt = $conn->prepare("SELECT id, email, isEmailConfirmed, is_email_confirmed, COALESCE(isEmailConfirmed, is_email_confirmed, 0) as confirmed_status FROM users WHERE id = :id LIMIT 1");
+        // Verify the update was successful by querying again
+        $verifyStmt = $conn->prepare("SELECT id, email, isEmailConfirmed FROM users WHERE id = :id LIMIT 1");
         $verifyStmt->execute([':id' => $user['id']]);
         $verified = $verifyStmt->fetch(PDO::FETCH_ASSOC);
         
@@ -393,9 +681,9 @@ function confirmEmail($token) {
             return ['success' => false, 'message' => 'Could not verify email confirmation'];
         }
         
-        // Check confirmation status using COALESCE value or individual columns
+        // Check confirmation status using isEmailConfirmed column
         $confirmed = false;
-        $confirmedValue = $verified['confirmed_status'] ?? $verified['isEmailConfirmed'] ?? $verified['is_email_confirmed'] ?? 0;
+        $confirmedValue = $verified['isEmailConfirmed'] ?? 0;
         
         // Check if confirmed: must be 1, '1', true, or non-zero
         if ($confirmedValue === 1 || $confirmedValue === '1' || $confirmedValue === true || $confirmedValue === 'true') {
@@ -470,6 +758,10 @@ function getUserProfile($userId) {
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($user) {
+        // Decrypt email and phone for user viewing their own profile
+        $user['email'] = decryptEmail($user['email']);
+        $user['phone'] = decryptPhone($user['phone']);
+        
         // Decode JSON fields (matching Node.js)
         $user['addresses'] = !empty($user['addresses']) ? json_decode($user['addresses'], true) : [];
         $user['preferredVendors'] = !empty($user['preferredVendors']) ? json_decode($user['preferredVendors'], true) : [];

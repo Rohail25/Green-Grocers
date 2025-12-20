@@ -8,6 +8,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/encryption.php';
 
 $error = '';
 
@@ -26,16 +27,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         // If email doesn't match known domains, try to find user in database
         // by checking both platforms (try trivemart first, then trivestore)
+        // Try both encrypted and plain text email for backward compatibility
         $conn = getDBConnection();
+        $normalizedEmail = strtolower(trim($email));
+        $encryptedEmail = encryptEmail($normalizedEmail);
+        
+        // First try encrypted email
         $stmt = $conn->prepare("SELECT platform FROM users WHERE email = :email LIMIT 1");
-        $stmt->execute([':email' => strtolower(trim($email))]);
+        $stmt->execute([':email' => $encryptedEmail]);
         $userPlatform = $stmt->fetchColumn();
+        
+        // If not found, try plain text email (for old users)
+        if (!$userPlatform) {
+            $stmt = $conn->prepare("SELECT platform FROM users WHERE email = :email LIMIT 1");
+            $stmt->execute([':email' => $normalizedEmail]);
+            $userPlatform = $stmt->fetchColumn();
+        }
+        
         if ($userPlatform) {
             $platform = $userPlatform;
         }
     }
     
-    // Match Node.js flow: login with detected platform
     try {
         if (loginUser($email, $password, $platform)) {
             $user = getCurrentUser();
@@ -52,10 +65,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($user['role'] === 'admin' || $user['role'] === 'vendor') {
                 // Admin and Vendor → Admin Dashboard
                 header('Location: ' . BASE_PATH . '/dashboard/pages/dashboard.php');
-            } elseif ($user['role'] === 'logistic') {
-                // Logistic → Customer Dashboard (or create separate logistic dashboard)
-                header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
-            } else {
+            } 
+            // elseif ($user['role'] === 'logistic') {
+            //     // Logistic → Customer Dashboard (or create separate logistic dashboard)
+            //     header('Location: ' . BASE_PATH . '/website/pages/dashboard.php');
+            // }
+             else {
                 // Customer → Website Home Page
                 header('Location: ' . BASE_PATH . '/');
             }
