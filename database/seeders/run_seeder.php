@@ -66,6 +66,19 @@ try {
     echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
 }
 
+echo "\n\n";
+
+// Run package seeder
+echo "Running Package Seeder...\n";
+echo str_repeat("=", 60) . "\n";
+
+try {
+    require_once __DIR__ . '/package_seeder.php';
+} catch (Exception $e) {
+    echo "\n❌ Fatal Error in Package Seeder: " . $e->getMessage() . "\n";
+    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+}
+
 echo "</pre>
     <p><a href='../../index.php'>← Back to Home</a></p>
     <p><a href='run_seeder.php'>🔄 Run Seeder Again</a></p>

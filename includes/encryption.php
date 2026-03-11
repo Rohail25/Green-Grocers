@@ -20,23 +20,38 @@ function encryptData($data, $deterministic = false) {
         return '';
     }
     
-    $ivLength = openssl_cipher_iv_length(ENCRYPTION_METHOD);
-    
-    if ($deterministic) {
-        // Use deterministic IV derived from data + key for consistent encryption
-        // This ensures same input always produces same output (needed for database lookups)
-        $ivSource = hash('sha256', ENCRYPTION_KEY . $data, true);
-        $iv = substr($ivSource, 0, $ivLength);
-    } else {
-        // Generate a random IV (Initialization Vector) for non-deterministic encryption
-        $iv = openssl_random_pseudo_bytes($ivLength);
+    try {
+        $ivLength = openssl_cipher_iv_length(ENCRYPTION_METHOD);
+        
+        if ($ivLength === false) {
+            error_log("Encryption error: Invalid cipher method");
+            return '';
+        }
+        
+        if ($deterministic) {
+            // Use deterministic IV derived from data + key for consistent encryption
+            // This ensures same input always produces same output (needed for database lookups)
+            $ivSource = hash('sha256', ENCRYPTION_KEY . $data, true);
+            $iv = substr($ivSource, 0, $ivLength);
+        } else {
+            // Generate a random IV (Initialization Vector) for non-deterministic encryption
+            $iv = openssl_random_pseudo_bytes($ivLength);
+        }
+        
+        // Encrypt the data
+        $encrypted = openssl_encrypt($data, ENCRYPTION_METHOD, ENCRYPTION_KEY, 0, $iv);
+        
+        if ($encrypted === false) {
+            error_log("Encryption error: openssl_encrypt failed for data: " . substr($data, 0, 20) . "...");
+            return '';
+        }
+        
+        // Combine IV and encrypted data, then base64 encode
+        return base64_encode($iv . $encrypted);
+    } catch (Exception $e) {
+        error_log("Encryption exception: " . $e->getMessage());
+        return '';
     }
-    
-    // Encrypt the data
-    $encrypted = openssl_encrypt($data, ENCRYPTION_METHOD, ENCRYPTION_KEY, 0, $iv);
-    
-    // Combine IV and encrypted data, then base64 encode
-    return base64_encode($iv . $encrypted);
 }
 
 /**
@@ -77,11 +92,13 @@ function decryptData($encryptedData) {
 
 /**
  * Encrypt email address
+ * Uses deterministic encryption so same email always produces same encrypted value
+ * This is needed for database lookups (WHERE email = encrypted_value)
  * @param string $email The email to encrypt
  * @return string Encrypted email
  */
 function encryptEmail($email) {
-    return encryptData(strtolower(trim($email)));
+    return encryptData(strtolower(trim($email)), true); // MUST be deterministic for lookups
 }
 
 /**

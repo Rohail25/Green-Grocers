@@ -1,11 +1,15 @@
 <?php
+// Enable error reporting for debugging (disable in production)
+ini_set('display_errors', 0); // Don't display to users
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 $error = '';
-$role = $_GET['role'] ?? 'customer';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $userData = [
@@ -15,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'confirmPassword' => $_POST['confirmPassword'] ?? '',
         'firstName' => $_POST['firstName'] ?? '',
         'lastName' => $_POST['lastName'] ?? '',
-        'role' => $_POST['role'] ?? 'customer',
+        'role' => 'customer',
         'platform' => 'trivemart' // Match Node.js: platform required
     ];
     
@@ -26,12 +30,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!isset($_POST['agreeToTerms'])) {
         $error = 'Please agree to the terms and conditions';
     } else {
-        $result = registerUser($userData);
-        if ($result['success']) {
-            header('Location: ' . BASE_PATH . '/auth/verify.php?email=' . urlencode($userData['email']));
-            exit;
-        } else {
-            $error = $result['message'] ?? 'Registration failed';
+        try {
+            error_log("Starting registration for: " . $userData['email']);
+            $result = registerUser($userData);
+            error_log("Registration result: " . json_encode($result));
+            
+            if ($result['success']) {
+                error_log("Registration successful, redirecting to verify page");
+                header('Location: ' . BASE_PATH . '/auth/verify.php?email=' . urlencode($userData['email']));
+                exit;
+            } else {
+                $error = $result['message'] ?? 'Registration failed';
+                error_log("Registration failed: " . $error);
+            }
+        } catch (Exception $e) {
+            error_log("Register page exception: " . $e->getMessage());
+            error_log("Exception trace: " . $e->getTraceAsString());
+            $error = 'Registration failed. Please try again later.';
         }
     }
 }
@@ -63,13 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php if ($error): ?>
                 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6"><?php echo htmlspecialchars($error); ?></div>
             <?php endif; ?>
-            <label class="block text-sm font-medium mb-3 text-gray-700" style="font-family: 'Arial', sans-serif;">Role</label>
-            <div class="flex mb-6 border rounded-lg overflow-hidden">
-                <a href="?role=customer" class="w-1/2 py-3 font-medium text-center transition <?php echo $role === 'customer' ? 'bg-orange-500 text-white' : 'bg-transparent text-gray-800'; ?>" style="font-family: 'Arial', sans-serif;">Customer</a>
-                <a href="?role=admin" class="w-1/2 py-3 font-medium text-center transition <?php echo $role === 'admin' ? 'bg-orange-500 text-white' : 'bg-transparent text-gray-800'; ?>" style="font-family: 'Arial', sans-serif;">Admin</a>
-            </div>
             <form method="POST" class="space-y-5">
-                <input type="hidden" name="role" value="<?php echo htmlspecialchars($role); ?>" />
                 <div>
                     <label class="block text-sm font-medium mb-2 text-gray-700" style="font-family: 'Arial', sans-serif;">Name<span class="text-red-500">*</span></label>
                     <input type="text" name="firstName" placeholder="Enter your name" class="w-full border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" required />

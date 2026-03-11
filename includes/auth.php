@@ -452,68 +452,87 @@ function loginUser($email, $password, $platform = 'trivemart') {
 }
 
 function registerUser($userData) {
-    $conn = getDBConnection();
-    
-    $email = strtolower(trim($userData['email'] ?? ''));
-    $password = $userData['password'] ?? '';
-    $confirmPassword = $userData['confirmPassword'] ?? '';
-    $platform = $userData['platform'] ?? 'trivemart';
-    $role = $userData['role'] ?? 'customer';
-    $phone = $userData['phone'] ?? '';
-    $firstName = $userData['firstName'] ?? '';
-    $lastName = $userData['lastName'] ?? '';
-    
-    // Match Node.js: validation
-    if (empty($platform) && $role !== 'agent') {
-        return ['success' => false, 'message' => 'Platform is required'];
-    }
-    
-    if ($role !== 'agent' && $password !== $confirmPassword) {
-        return ['success' => false, 'message' => 'Passwords do not match'];
-    }
-    
-    // Encrypt email and phone before storing
-    $encryptedEmail = encryptEmail($email);
-    $encryptedPhone = !empty($phone) ? encryptPhone($phone) : '';
-    
-    // Match Node.js: check existing user by email AND platform (compare encrypted emails)
-    $stmt = $conn->prepare("SELECT id FROM users WHERE email = :email AND platform = :platform");
-    $stmt->execute([':email' => $encryptedEmail, ':platform' => $platform]);
-    if ($stmt->fetch()) {
-        return ['success' => false, 'message' => 'Email already registered'];
-    }
-    
-    // Match Node.js: generate vendorId/clientId based on platform
-    $vendorId = null;
-    $clientId = null;
-    if ($platform === 'trivestore') {
-        $vendorId = 'VEND-' . strtoupper(substr(uniqid(), -8));
-    } elseif ($platform === 'trivemart') {
-        $clientId = 'MART-' . strtoupper(substr(uniqid(), -8));
-    }
-    
-    // Match Node.js: hash password
-    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-    
-    // Match Node.js: isVerified logic (logistic must be admin-approved)
-    $isVerified = ($role === 'logistic') ? false : true;
-    
-    // Match Node.js: insert user with JSON fields initialized as empty arrays
-    $stmt = $conn->prepare("
-        INSERT INTO users (
-            id, email, phone, password, firstName, lastName, role, platform,
-            vendorId, clientId, isEmailConfirmed, isVerified,
-            verificationDocuments, preferredVendors, addresses,
-            created_at, updated_at
-        ) VALUES (
-            UUID(), :email, :phone, :password, :firstName, :lastName, :role, :platform,
-            :vendorId, :clientId, FALSE, :isVerified,
-            '[]', '[]', '[]',
-            NOW(), NOW()
-        )
-    ");
+    try {
+        $conn = getDBConnection();
+        
+        $email = strtolower(trim($userData['email'] ?? ''));
+        $password = $userData['password'] ?? '';
+        $confirmPassword = $userData['confirmPassword'] ?? '';
+        $platform = $userData['platform'] ?? 'trivemart';
+        $role = $userData['role'] ?? 'customer';
+        $phone = $userData['phone'] ?? '';
+        $firstName = $userData['firstName'] ?? '';
+        $lastName = $userData['lastName'] ?? '';
+        
+        error_log("Registration attempt - Email: {$email}, Role: {$role}, Platform: {$platform}");
+        
+        // Match Node.js: validation
+        if (empty($platform) && $role !== 'agent') {
+            error_log("Registration failed: Platform required");
+            return ['success' => false, 'message' => 'Platform is required'];
+        }
+        
+        if ($role !== 'agent' && $password !== $confirmPassword) {
+            error_log("Registration failed: Passwords do not match");
+            return ['success' => false, 'message' => 'Passwords do not match'];
+        }
+        
+        // Encrypt email and phone before storing
+        try {
+            $encryptedEmail = encryptEmail($email);
+            $encryptedPhone = !empty($phone) ? encryptPhone($phone) : '';
+            error_log("Email encrypted successfully");
+        } catch (Exception $e) {
+            error_log("Encryption error: " . $e->getMessage());
+            return ['success' => false, 'message' => 'Encryption error'];
+        }
+        
+        // Match Node.js: check existing user by email AND platform (compare encrypted emails)
+        try {
+            $stmt = $conn->prepare("SELECT id FROM users WHERE email = :email AND platform = :platform");
+            $stmt->execute([':email' => $encryptedEmail, ':platform' => $platform]);
+            if ($stmt->fetch()) {
+                error_log("Registration failed: Email already registered");
+                return ['success' => false, 'message' => 'Email already registered'];
+            }
+        } catch (PDOException $e) {
+            error_log("Database check error: " . $e->getMessage());
+            return ['success' => false, 'message' => 'Database error during validation'];
+        }
+        
+        // Match Node.js: generate vendorId/clientId based on platform
+        $vendorId = null;
+        $clientId = null;
+        if ($platform === 'trivestore') {
+            $vendorId = 'VEND-' . strtoupper(substr(uniqid(), -8));
+        } elseif ($platform === 'trivemart') {
+            $clientId = 'MART-' . strtoupper(substr(uniqid(), -8));
+        }
+        
+        // Match Node.js: hash password
+        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+        
+        // Match Node.js: isVerified logic (logistic must be admin-approved)
+        $isVerified = ($role === 'logistic') ? false : true;
+        
+        // Match Node.js: insert user with JSON fields initialized as empty arrays
+        $stmt = $conn->prepare("
+            INSERT INTO users (
+                id, email, phone, password, firstName, lastName, role, platform,
+                vendorId, clientId, isEmailConfirmed, isVerified,
+                verificationDocuments, preferredVendors, addresses,
+                created_at, updated_at
+            ) VALUES (
+                UUID(), :email, :phone, :password, :firstName, :lastName, :role, :platform,
+                :vendorId, :clientId, FALSE, :isVerified,
+                '[]', '[]', '[]',
+                NOW(), NOW()
+            )
+        ");
     
     try {
+        error_log("Attempting to insert user into database...");
+        
         $stmt->execute([
             ':email' => $encryptedEmail, // Store encrypted email
             ':phone' => $encryptedPhone, // Store encrypted phone
@@ -527,6 +546,8 @@ function registerUser($userData) {
             ':isVerified' => $isVerified ? 1 : 0
         ]);
         
+        error_log("User inserted successfully!");
+        
         // Get the user ID (for UUID(), we need to fetch it after insertion)
         // Use encrypted email for lookup
         $stmt = $conn->prepare("SELECT id FROM users WHERE email = :email AND platform = :platform ORDER BY created_at DESC LIMIT 1");
@@ -535,28 +556,35 @@ function registerUser($userData) {
         $userId = $user['id'] ?? null;
         
         if (!$userId) {
+            error_log("Failed to retrieve user ID after insertion");
             return ['success' => false, 'message' => 'Failed to retrieve user ID'];
         }
+        
+        error_log("User ID retrieved: {$userId}");
         
         // Match Node.js: generate confirmation token (simplified - in production use JWT)
         $verificationToken = bin2hex(random_bytes(32));
         $updateStmt = $conn->prepare("UPDATE users SET emailVerificationToken = :token WHERE id = :id");
         $updateStmt->execute([':token' => $verificationToken, ':id' => $userId]);
         
+        error_log("Verification token generated");
+        
         // Send confirmation email asynchronously to speed up registration
         // Don't block registration process waiting for email
-        // Use decrypted email for sending (email is stored encrypted but we need plain text to send)
+        // Use plain text email for sending (not encrypted one)
         require_once __DIR__ . '/email.php';
         
         // For faster registration, send email in background (if supported) or optimize SMTP
         if (function_exists('fastcgi_finish_request')) {
             // FastCGI - send email after response
             register_shutdown_function(function() use ($email, $firstName, $verificationToken) {
+                error_log("Sending verification email in background to: {$email}");
                 @sendVerificationEmail($email, $firstName, $verificationToken);
             });
             $emailSent = true; // Assume it will be sent
         } else {
             // Regular PHP - send email but with optimized SMTP
+            error_log("Sending verification email to: {$email}");
             $emailSent = @sendVerificationEmail($email, $firstName, $verificationToken);
         }
         
@@ -567,6 +595,8 @@ function registerUser($userData) {
             error_log("Verification email queued/sent to: " . $email);
         }
         
+        error_log("Registration successful for: {$email}");
+        
         return [
             'success' => true,
             'user_id' => $userId,
@@ -576,8 +606,17 @@ function registerUser($userData) {
             'email_sent' => $emailSent
         ];
     } catch (PDOException $e) {
-        error_log("Registration error: " . $e->getMessage());
+        error_log("Registration database error: " . $e->getMessage());
+        error_log("SQL Error Code: " . $e->getCode());
+        error_log("Stack trace: " . $e->getTraceAsString());
+        return ['success' => false, 'message' => 'Registration failed: Database error'];
+    } catch (Exception $e) {
+        error_log("Registration general error: " . $e->getMessage());
         return ['success' => false, 'message' => 'Registration failed: ' . $e->getMessage()];
+    }
+    } catch (Exception $e) {
+        error_log("Registration outer error: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Registration failed'];
     }
 }
 

@@ -5,6 +5,7 @@ This directory contains seeder files to populate your database with test data.
 ## 📁 Files
 
 - `user_seeder.php` - Creates test users with Vendor IDs and Client IDs
+- `package_seeder.php` - Creates daily packages for Monday through Sunday using active products
 - `run_seeder.php` - Runs all seeders (web interface)
 
 ## 🚀 How to Use
@@ -36,6 +37,11 @@ php database/seeders/user_seeder.php
 
 - **Logistic User**:
   - logistic1@green-grocers.com (logistic role)
+
+### Package Seeder Creates:
+- 7 active packages, one for each day from Monday to Sunday
+- Each package includes 4 real product names pulled from the `products` table
+- Featured package cards ready for the landing page and add-to-cart flow
 
 ## 🔑 Default Passwords
 

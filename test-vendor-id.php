@@ -9,8 +9,10 @@
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/auth.php';
 
-// Start session
-session_start();
+// Start session only if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 echo "<h2>Vendor ID / Client ID Test</h2>";
 

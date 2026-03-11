@@ -88,8 +88,22 @@ function sendEmail($to, $subject, $htmlMessage, $toName = '') {
     $smtpEnabled = (defined('SMTP_ENABLED') && constant('SMTP_ENABLED') === true);
     
     if ($smtpEnabled) {
-        // Use SMTP to send email
-        return sendEmailSMTP($to, $subject, $htmlMessage, $toName, $fromEmail, $fromName);
+        // Use SMTP to send email with timeout protection
+        try {
+            // Set a maximum execution time for email sending (5 seconds)
+            $oldTimeLimit = ini_get('max_execution_time');
+            @set_time_limit(5);
+            
+            $result = sendEmailSMTP($to, $subject, $htmlMessage, $toName, $fromEmail, $fromName);
+            
+            // Restore old time limit
+            @set_time_limit($oldTimeLimit);
+            
+            return $result;
+        } catch (Exception $e) {
+            error_log("Email sending exception: " . $e->getMessage());
+            return false;
+        }
     } else {
         // Use PHP mail() function
         $headers = "MIME-Version: 1.0" . "\r\n";
@@ -168,12 +182,12 @@ function sendEmailSMTP($to, $subject, $htmlMessage, $toName, $fromEmail, $fromNa
             ]
         ]);
         
-        // Reduced connection timeout from 30 to 10 seconds
+        // Reduced connection timeout for faster failure - Gmail usually responds in under 2 seconds
         $socket = @stream_socket_client(
             "tcp://{$smtpHost}:{$smtpPort}",
             $errno,
             $errstr,
-            10, // Reduced timeout for faster failure
+            3, // 3 second timeout - fast enough for Gmail, prevents long hangs
             STREAM_CLIENT_CONNECT,
             $context
         );
@@ -184,7 +198,7 @@ function sendEmailSMTP($to, $subject, $htmlMessage, $toName, $fromEmail, $fromNa
         }
         
         // Set shorter timeouts for faster operation
-        stream_set_timeout($socket, 5, 0); // 5 second timeout
+        stream_set_timeout($socket, 3, 0); // 3 second timeout for all operations
         
         // Read server greeting (with timeout check)
         $response = readSMTPResponse($socket);

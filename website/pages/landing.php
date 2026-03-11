@@ -7,7 +7,19 @@ require_once __DIR__ . '/../../includes/functions.php';
 $pageTitle = 'Green Grocers - Fresh Groceries Delivered Daily';
 $categories = getCategories();
 $featuredProducts = getFeaturedProducts(6);
-$featuredPackages = getFeaturedPackages(6);
+
+// Get dynamic daily packages instead of hardcoded logic
+$packagesByDay = getDailyPackages();
+$weekDays = array_keys($packagesByDay);  // ['Monday', 'Tuesday', ... 'Sunday']
+$allDailyPackages = [];
+
+foreach ($packagesByDay as $dayName => $dayPackages) {
+    foreach ($dayPackages as $package) {
+        $package['assignedDay'] = $dayName;
+        $allDailyPackages[] = $package;
+    }
+}
+
 function getTopCategories(int $limit = 8): array {
     $conn = getDBConnection();
     $stmt = $conn->prepare("SELECT title FROM categories ORDER BY title ASC LIMIT :limit");
@@ -21,73 +33,14 @@ function getTopCategories(int $limit = 8): array {
 <?php require_once __DIR__ . '/../layouts/header.php'; ?>
 
 <div class="w-full">
-    <!-- Hero Section -->
-    <section class="relative px-6 py-20 md:py-28 flex flex-col items-center justify-center overflow-hidden mt-[8rem]" style="background-color: #f5f5f5; background-image: url('data:image/svg+xml,%3Csvg width=&quot;60&quot; height=&quot;60&quot; viewBox=&quot;0 0 60 60&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;%3E%3Cg fill=&quot;none&quot; fill-rule=&quot;evenodd&quot;%3E%3Cg fill=&quot;%23e8f5e9&quot; fill-opacity=&quot;0.4&quot;%3E%3Cpath d=&quot;M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z&quot;/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');">
-        <div class="max-w-2xl text-center z-10">
-            <h2 class="text-4xl md:text-6xl font-bold text-green-600 leading-tight" style="font-family: 'Arial', sans-serif; line-height: 1.1;">Fresh Groceries</h2>
-            <h3 class="text-4xl md:text-6xl font-bold text-gray-900 mt-2 leading-tight" style="font-family: 'Arial', sans-serif; line-height: 1.1;">Delivered Daily to Your Door</h3>
-            <div class="flex gap-4 mt-6 justify-center">
-                <button onclick="scrollToFeaturedProducts()" class="px-6 py-2 border border-orange-500 text-orange-500 bg-white rounded-lg hover:bg-orange-50" style="font-family: 'Arial', sans-serif; min-width: 180px;">Shop Now</button>
-                <button onclick="scrollToDailyPackages()" class="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600" style="font-family: 'Arial', sans-serif; min-width: 180px;">Browse Daily Packages</button>
-            </div>
-            <p class="text-gray-600 text-lg md:text-xl mt-6" style="font-family: 'Arial', sans-serif;">Shop smarter with hand-picked daily packages and real-time pricing.</p>
-        </div>
-        
-        <!-- Search Bar Section -->
-        <div class="max-w-2xl w-full z-10" style="margin-top: 3rem;">
-            <div class="flex gap-2 items-center">
-                <div class="relative flex-1">
-                    <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                    </svg>
-                    <input type="text" id="hero-search-input" placeholder="Search for items..." class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" style="font-family: 'Arial', sans-serif;" />
-                </div>
-                <button onclick="performHeroSearch()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium" style="font-family: 'Arial', sans-serif;">Search</button>
-            </div>
-            
-            <!-- Suggested Items -->
-            <div class="mt-4 bg-white rounded-lg p-4 shadow-md flex items-center gap-1 flex-wrap" style="font-family: 'Arial', sans-serif;">
-                <p class="text-sm font-bold text-black">Suggested:</p>
-                <!-- <div class="flex flex-wrap gap-2"> -->
-                    <?php 
-                    $suggestedItems = getSuggestedCategories(); // implement this
-                     foreach ($suggestedItems as $item): ?>
-                        <a href="<?= BASE_PATH ?>/category?name=<?= urlencode($item) ?>"
-                           class="px-4 py-1.5 bg-gray-300 text-black rounded-2xl text-sm hover:bg-green-200 transition">
-                            <?= htmlspecialchars($item) ?>
-                        </a>
-                    <?php endforeach; ?>
-                    
-                <!-- </div> -->
-            </div>
-        </div>
-        
-        <!-- Decorative Icons -->
-        <!-- <div class="absolute inset-0 pointer-events-none">
-            <div class="hidden md:block absolute top-10 left-10 lg:top-20 lg:left-20 w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-xl shadow-lg flex items-center justify-center">
-                <img src="<?php echo imagePath('random1.png'); ?>" alt="shopping basket" class="w-16 h-16 lg:w-20 lg:h-20 object-contain rounded-xl" />
-            </div>
-            
-            <div class="hidden md:block absolute top-10 right-10 lg:top-20 lg:right-20 w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-xl shadow-lg flex items-center justify-center">
-                <img src="<?php echo imagePath('random3.png'); ?>" alt="tomato and milk" class="w-16 h-16 lg:w-20 lg:h-20 object-contain rounded-xl" />
-            </div>
-            
-            <div class="hidden md:block absolute left-10 lg:bottom-60 lg:left-20 w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-xl shadow-lg flex items-center justify-center" style="bottom: 23rem; right: 10rem;">
-                <img src="<?php echo imagePath('random2.png'); ?>" alt="watermelon" class="w-16 h-16 lg:w-20 lg:h-20 object-contain rounded-xl" />
-            </div>
-            
-            <div class="hidden md:block absolute bottom-[18rem] right-[20rem] lg:bottom-80 lg:right-20 w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-xl shadow-lg flex items-center justify-center">
-                <img src="<?php echo imagePath('random4.png'); ?>" alt="shopping cart" class="w-16 h-16 lg:w-20 lg:h-20 object-contain rounded-xl" />
-            </div>
-        </div> -->
-    </section>
-
-    <!-- Dynamic Text Section -->
+   
+<div class="h-[80px] w-full"></div>
+    <!-- Dynamic Textection -->
     <?php 
     $dynamicTexts = getActiveDynamicTexts();
     if (!empty($dynamicTexts)): 
     ?>
-    <section class="px-6 py-10 bg-white">
+    <!-- <section class="px-6 py-10 bg-white mt-3">
         <div class="max-w-6xl mx-auto">
             <?php foreach ($dynamicTexts as $text): ?>
                 <div class="mb-8 last:mb-0">
@@ -100,7 +53,7 @@ function getTopCategories(int $limit = 8): array {
                 </div>
             <?php endforeach; ?>
         </div>
-    </section>
+    </section> -->
     <?php endif; ?>
 
     <!-- Explore Categories -->
@@ -114,7 +67,7 @@ function getTopCategories(int $limit = 8): array {
                 <button onclick="filterCategory('all')" class="category-filter px-4 py-2 rounded-full text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition" data-filter="all" style="font-family: 'Arial', sans-serif;">
                     All
                 </button>
-                <button onclick="filterCategory('Veges')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Veges" style="font-family: 'Arial', sans-serif;">
+                <button onclick="filterCategory('Vegetable')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Vegetable" style="font-family: 'Arial', sans-serif;">
                     Vegetables
                 </button>
                 <button onclick="filterCategory('Fruit')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Fruit" style="font-family: 'Arial', sans-serif;">
@@ -123,28 +76,27 @@ function getTopCategories(int $limit = 8): array {
                 <button onclick="filterCategory('Juices and Smoothies')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Juices and Smoothies" style="font-family: 'Arial', sans-serif;">
                     Coffe & teas
                 </button>
-                <button onclick="filterCategory('Grocery')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Grocery" style="font-family: 'Arial', sans-serif;">
-                    Meat
+                <button onclick="filterCategory('Global Pantry')" class="category-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Global Pantry" style="font-family: 'Arial', sans-serif;">
+                    Global Pantry
                 </button>
             </div>
             
-            <!-- Navigation Arrows -->
-            <div class="flex gap-2 ml-auto">
-                <button onclick="scrollCategories('left')" class="p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition">
-                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                </button>
-                <button onclick="scrollCategories('right')" class="p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition">
-                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                </button>
-            </div>
         </div>
         
         <!-- Categories Grid -->
-        <div id="categories-scroll" class="flex overflow-x-auto gap-8 md:gap-10 lg:gap-12 justify-start pb-4 px-2 scrollbar-hide">
+        <div class="relative px-10 md:px-14">
+            <button onclick="scrollCategories('left')" class="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 border border-gray-300 rounded-full bg-white hover:bg-gray-100 transition">
+                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+            <button onclick="scrollCategories('right')" class="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 border border-gray-300 rounded-full bg-white hover:bg-gray-100 transition">
+                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </button>
+
+            <div id="categories-scroll" class="flex overflow-x-auto gap-8 md:gap-10 lg:gap-12 justify-center pb-4 px-2 scrollbar-hide">
             <?php 
             // Map category titles to specific icons/images and colors
             $categoryIcons = [
-                'Veges' => 'vege.png',
+                'Vegetable' => 'vege.png',
                 'Vegetables' => 'vege.png',
                 'Fruit' => 'fruits.png',
                 'Fruits' => 'fruits.png',
@@ -153,12 +105,13 @@ function getTopCategories(int $limit = 8): array {
                 'Dairy' => 'dairy.png',
                 'Grocery' => 'grocery.png',
                 'Groceries' => 'grocery.png',
+                'Global Pantry' => 'grocery.png',
                 'Bakery' => 'bakery.png',
                 'Frozen Item' => 'bakery.png'
             ];
             
             $categoryColors = [
-                'Veges' => 'bg-orange-100',
+                'Vegetable' => 'bg-orange-100',
                 'Vegetables' => 'bg-orange-100',
                 'Fruit' => 'bg-pink-100',
                 'Fruits' => 'bg-pink-100',
@@ -167,6 +120,7 @@ function getTopCategories(int $limit = 8): array {
                 'Dairy' => 'bg-yellow-100',
                 'Grocery' => 'bg-amber-100',
                 'Groceries' => 'bg-amber-100',
+                'Global Pantry' => 'bg-purple-100',
                 'Bakery' => 'bg-gray-100',
                 'Frozen Item' => 'bg-gray-100'
             ];
@@ -180,9 +134,22 @@ function getTopCategories(int $limit = 8): array {
                     $imgPath = !empty($cat['image']) ? imagePath($cat['image']) : imagePath('category.jpg');
                 }
                 
+                // Map category to specific page URLs
+                $categoryPageMap = [
+                    'Fruit' => '/website/pages/fruit.php',
+                    'Fruits' => '/website/pages/fruit.php',
+                    'Vegetable' => '/website/pages/vegetable.php',
+                    'Vegetables' => '/website/pages/vegetable.php',
+                    'Veges' => '/website/pages/vegetable.php',
+                    'Global Pantry' => '/website/pages/global-pantry.php'
+                ];
+                
+                $categoryUrl = $categoryPageMap[$catTitle] ?? ('/category?name=' . urlencode($catTitle));
+                $categoryLink = BASE_PATH . $categoryUrl;
+                
                 $bgColor = $categoryColors[$catTitle] ?? 'bg-gray-100';
             ?>
-                <a href="<?php echo BASE_PATH; ?>/category?name=<?php echo urlencode($cat['title']); ?>" 
+                <a href="<?php echo $categoryLink; ?>" 
                    class="category-item text-center flex-shrink-0 w-28 md:w-32 lg:w-36 cursor-pointer flex flex-col items-center gap-3 group"
                    data-category="<?php echo htmlspecialchars($cat['title']); ?>">
                     <!-- Circular Container with Background -->
@@ -194,6 +161,7 @@ function getTopCategories(int $limit = 8): array {
                     <p class="text-sm font-semibold text-gray-800 group-hover:text-green-600 transition-colors" style="font-family: 'Arial', sans-serif;"><?php echo htmlspecialchars($cat['title']); ?></p>
                 </a>
             <?php endforeach; ?>
+            </div>
         </div>
     </section>
 
@@ -208,7 +176,7 @@ function getTopCategories(int $limit = 8): array {
                     <button onclick="filterProducts('all')" class="product-filter px-4 py-2 rounded-full text-sm font-normal bg-green-600 text-white hover:bg-green-700 transition" data-filter="all" style="font-family: 'Arial', sans-serif;">
                         All
                     </button>
-                    <button onclick="filterProducts('Veges')" class="product-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Veges" style="font-family: 'Arial', sans-serif;">
+                    <button onclick="filterProducts('Vegetable')" class="product-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Vegetable" style="font-family: 'Arial', sans-serif;">
                         Vegetables
                     </button>
                     <button onclick="filterProducts('Fruit')" class="product-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Fruit" style="font-family: 'Arial', sans-serif;">
@@ -217,8 +185,8 @@ function getTopCategories(int $limit = 8): array {
                     <button onclick="filterProducts('Juices and Smoothies')" class="product-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Juices and Smoothies" style="font-family: 'Arial', sans-serif;">
                         Coffe & teas
                     </button>
-                    <button onclick="filterProducts('Grocery')" class="product-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Grocery" style="font-family: 'Arial', sans-serif;">
-                        Meat
+                    <button onclick="filterProducts('Global Pantry')" class="product-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="Global Pantry" style="font-family: 'Arial', sans-serif;">
+                        Global Pantry
                     </button>
                 </div>
                 
@@ -317,68 +285,80 @@ function getTopCategories(int $limit = 8): array {
     <!-- Daily Packages -->
     <section id="daily-packages" class="px-6 py-10 bg-white">
         <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
-            <h3 class="text-xl md:text-2xl font-bold text-gray-800" style="font-family: 'Arial', sans-serif;">Daily Packages</h3>
-            
-            <div class="flex items-center gap-4">
-                <!-- Category Tabs -->
-                <div class="flex items-center gap-3 md:gap-4 flex-wrap">
-                    <button onclick="filterPackages('all')" class="package-filter px-4 py-2 rounded-full text-sm font-normal bg-green-600 text-white hover:bg-green-700 transition" data-filter="all" style="font-family: 'Arial', sans-serif;">
-                        All
+            <div>
+                <h3 class="text-2xl md:text-3xl font-bold text-gray-800" style="font-family: 'Arial', sans-serif;">Daily Packages</h3>
+                <p class="text-sm text-gray-600 mt-1" style="font-family: 'Arial', sans-serif;">All package cards below are loaded from the packages table and filtered by assigned day.</p>
+            </div>
+
+            <div class="flex items-center gap-3 md:gap-4 flex-wrap">
+                <button onclick="filterPackages('all')" class="package-filter px-4 py-2 rounded-full text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition" data-filter="all" style="font-family: 'Arial', sans-serif;">
+                    All
+                </button>
+                <?php foreach ($weekDays as $dayName): ?>
+                    <button onclick="filterPackages('<?php echo htmlspecialchars($dayName); ?>')" class="package-filter px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="<?php echo htmlspecialchars($dayName); ?>" style="font-family: 'Arial', sans-serif;">
+                        <?php echo htmlspecialchars($dayName); ?>
                     </button>
-                    <button onclick="filterPackages('featured')" class="package-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="featured" style="font-family: 'Arial', sans-serif;">
-                        Featured
-                    </button>
-                    <button onclick="filterPackages('popular')" class="package-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="popular" style="font-family: 'Arial', sans-serif;">
-                        Popular
-                    </button>
-                    <button onclick="filterPackages('new')" class="package-filter px-4 py-2 rounded-full text-sm font-normal text-gray-600 bg-gray-100 hover:bg-gray-200 transition" data-filter="new" style="font-family: 'Arial', sans-serif;">
-                        New
-                    </button>
-                </div>
-                
-                <!-- Navigation Arrows -->
-                <div class="flex gap-2">
-                    <button onclick="scrollPackages('left')" class="p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition">
-                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                    </button>
-                    <button onclick="scrollPackages('right')" class="p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition">
-                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </button>
-                </div>
+                <?php endforeach; ?>
             </div>
         </div>
-        <div id="packages-scroll" class="flex gap-6 overflow-x-auto no-scrollbar">
-            <?php foreach ($featuredPackages as $pkg): ?>
-                <div class="flex-shrink-0 w-72 package-item">
-                    <?php 
-                    $basePrice = $pkg['retailPrice'] ?? 0;
-                    $discountValue = $pkg['discount']['value'] ?? 0;
-                    $discountPrice = $basePrice - ($basePrice * $discountValue / 100);
-                    // Use stored image path if present (already includes BASE_PATH), else fallback
-                    $image = !empty($pkg['image']) ? $pkg['image'] : imagePath('package.jpg');
-                    $packageDay = strtoupper($pkg['packageDay'] ?? 'MONDAY');
-                    $rating = 4;
-                    $reviewCount = 4;
-                    ?>
-                    <div class="bg-white rounded-xl overflow-hidden border border-gray-200" style="font-family: 'Arial', sans-serif;">
-                        <div class="relative w-full h-48 flex items-center justify-center bg-gray-100">
-                            <img src="<?php echo htmlspecialchars($image); ?>" alt="<?php echo htmlspecialchars($pkg['name']); ?>" class="object-cover w-full h-full" />
-                            <div class="absolute top-2 left-2">
-                                <span class="bg-orange-500 text-white font-semibold text-xs px-3 py-1 rounded-md">
-                                    <?php echo $packageDay; ?> PACKAGE
-                                </span>
+
+        <div class="relative px-10 md:px-14">
+            <button onclick="scrollPackages('left')" class="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 border border-gray-300 rounded-full bg-white hover:bg-gray-100 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+            </button>
+            <button onclick="scrollPackages('right')" class="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 border border-gray-300 rounded-full bg-white hover:bg-gray-100 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </button>
+
+            <div id="packages-scroll" class="flex gap-6 overflow-x-auto scrollbar-hide px-2 py-2 scroll-smooth lg:grid lg:grid-cols-3 lg:gap-6 lg:overflow-visible">
+                <?php if (!empty($allDailyPackages)): ?>
+                    <?php foreach ($allDailyPackages as $pkg): ?>
+                        <?php
+                        $basePrice = (float)($pkg['retailPrice'] ?? 0);
+                        $discountValue = (float)($pkg['discount']['value'] ?? 0);
+                        $discountPrice = $basePrice;
+                        if ($discountValue > 0) {
+                            $discountPrice = $basePrice - ($basePrice * $discountValue / 100);
+                        }
+                        $pkgItems = is_array($pkg['items'] ?? null) ? $pkg['items'] : [];
+                        $itemSummaries = [];
+                        foreach ($pkgItems as $item) {
+                            $itemName = trim((string)($item['name'] ?? ''));
+                            $itemQty = trim((string)($item['quantity'] ?? ''));
+                            if ($itemName === '') {
+                                continue;
+                            }
+                            $itemSummaries[] = $itemQty !== '' ? $itemName . ' (' . $itemQty . ')' : $itemName;
+                        }
+                        $image = trim((string)($pkg['image'] ?? ''));
+                        if ($image === '') {
+                            $image = imagePath('package.jpg');
+                        }
+                        $rating = max(0, min(5, (float)($pkg['rating'] ?? 4)));
+                        $reviewCount = max(1, count($pkgItems));
+                        $assignedDay = $pkg['assignedDay'] ?? ucfirst(strtolower((string)($pkg['packageDay'] ?? '')));
+                        ?>
+                        <div class="package-item bg-white rounded-xl overflow-hidden border border-gray-200 shadow-md flex-shrink-0 w-[18rem] md:w-[20rem] lg:w-auto" data-day="<?php echo htmlspecialchars($assignedDay); ?>" style="font-family: 'Arial', sans-serif;">
+                            <div class="relative w-full h-48 flex items-center justify-center bg-gray-100">
+                                <img src="<?php echo htmlspecialchars($image); ?>" alt="<?php echo htmlspecialchars($pkg['name'] ?? 'Package'); ?>" class="object-cover w-full h-full" />
+                                <div class="absolute top-2 left-2">
+                                    <span class="bg-orange-500 text-white font-semibold text-xs px-3 py-1 rounded-md">
+                                        <?php echo htmlspecialchars(strtoupper($assignedDay)); ?> PACKAGE
+                                    </span>
+                                </div>
                             </div>
-                        </div>
-                        <div class="p-4">
-                            <div class="flex items-center justify-between mb-2">
-                                <p class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($pkg['name']); ?></p>
-                            </div>
-                            
-                            <!-- Rating and Wishlist -->
-                            <div class="flex items-center justify-between mb-2">
-                                <div class="flex items-center gap-1">
+                            <div class="p-4">
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <p class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($pkg['name'] ?? 'Package'); ?></p>
+                                </div>
+
+                                <div class="flex items-center gap-1 mb-2">
                                     <?php for ($i = 1; $i <= 5; $i++): ?>
-                                        <?php if ($i <= $rating): ?>
+                                        <?php if ($i <= round($rating)): ?>
                                             <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
                                         <?php else: ?>
                                             <svg class="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
@@ -386,34 +366,62 @@ function getTopCategories(int $limit = 8): array {
                                     <?php endfor; ?>
                                     <span class="text-xs text-gray-600 ml-1">(<?php echo $reviewCount; ?>)</span>
                                 </div>
-                                <button onclick="toggleWishlist('<?php echo $pkg['id']; ?>')" class="text-gray-400 hover:text-red-500 transition-colors">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
-                                    </svg>
-                                </button>
-                            </div>
-                            
-                            <p class="text-xs text-gray-600 mb-3">Includes: Milk, Veggies...</p>
-                            
-                            <div class="mt-3 flex items-center gap-3 mb-4">
-                                <p class="text-lg font-bold text-black">RS.<?php echo number_format($discountPrice, 0); ?></p>
-                                <p class="text-sm line-through text-gray-500"><?php echo number_format($basePrice, 0); ?></p>
-                            </div>
-                            
-                            <div class="flex gap-2">
-                                <button class="flex-1 border border-green-600 text-green-600 px-4 py-2 rounded-md hover:bg-green-50 transition">Customize</button>
-                                <form method="POST" action="<?php echo BASE_PATH; ?>/includes/cart-action.php" class="flex-1 add-to-cart-form" data-product-id="<?php echo $pkg['id']; ?>" data-type="package">
-                                    <input type="hidden" name="action" value="add">
-                                    <input type="hidden" name="id" value="<?php echo $pkg['id']; ?>">
-                                    <input type="hidden" name="type" value="package">
-                                    <input type="hidden" name="quantity" value="1">
-                                    <button type="submit" class="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Cart</button>
-                                </form>
+
+                                <p class="text-xs text-gray-600 mb-3 min-h-[40px]">
+                                    <?php echo htmlspecialchars(!empty($itemSummaries) ? implode(', ', array_slice($itemSummaries, 0, 3)) : 'Fresh grocery package ready for the day.'); ?>
+                                </p>
+
+                                <div class="mt-3 flex items-center gap-3 mb-4">
+                                    <p class="text-lg font-bold text-black">$<?php echo number_format($discountPrice, 2); ?></p>
+                                    <?php if ($discountValue > 0): ?>
+                                        <p class="text-sm line-through text-gray-500">$<?php echo number_format($basePrice, 2); ?></p>
+                                    <?php endif; ?>
+                                </div>
+
+                                <div class="mb-4">
+                                    <p class="text-xs font-semibold text-gray-600 mb-2">Included Items</p>
+                                    <?php if (!empty($pkgItems)): ?>
+                                        <ul class="list-disc list-inside text-xs text-gray-700 space-y-1 max-h-24 overflow-y-auto pr-1">
+                                            <?php foreach ($pkgItems as $item): ?>
+                                                <?php
+                                                $itemName = trim((string)($item['name'] ?? ''));
+                                                $itemQty = trim((string)($item['quantity'] ?? ''));
+                                                if ($itemName === '') {
+                                                    continue;
+                                                }
+                                                ?>
+                                                <li>
+                                                    <?php echo htmlspecialchars($itemName); ?>
+                                                    <?php if ($itemQty !== ''): ?>
+                                                        <span class="text-gray-500">(<?php echo htmlspecialchars($itemQty); ?>)</span>
+                                                    <?php endif; ?>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    <?php else: ?>
+                                        <p class="text-xs text-gray-500">No items listed for this package.</p>
+                                    <?php endif; ?>
+                                </div>
+
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="filterPackages('<?php echo htmlspecialchars($assignedDay); ?>')" class="flex-1 border border-green-600 text-green-600 px-4 py-2 rounded-md hover:bg-green-50 transition">View Day</button>
+                                    <form method="POST" action="<?php echo BASE_PATH; ?>/includes/cart-action.php" class="flex-1 add-to-cart-form" data-product-id="<?php echo $pkg['id']; ?>" data-type="package">
+                                        <input type="hidden" name="action" value="add">
+                                        <input type="hidden" name="id" value="<?php echo $pkg['id']; ?>">
+                                        <input type="hidden" name="type" value="package">
+                                        <input type="hidden" name="quantity" value="1">
+                                        <button type="submit" class="w-full bg-orange-500 text-white px-4 py-2 rounded-md hover:bg-orange-600">Buy Now</button>
+                                    </form>
+                                </div>
                             </div>
                         </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="col-span-full text-center py-12 w-full">
+                        <p class="text-gray-500 text-lg">No daily packages available at the moment.</p>
                     </div>
-                </div>
-            <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
         </div>
     </section>
 
@@ -476,14 +484,13 @@ function filterCategory(categoryName) {
     // Map filter button labels to actual category titles
     const categoryMap = {
         'all': 'all',
-        'Veges': 'Veges',
-        'Vegetables': 'Veges',
+        'Vegetable': 'Vegetable',
+        'Vegetables': 'Vegetable',
         'Fruit': 'Fruit',
         'Fruits': 'Fruit',
         'Juices and Smoothies': 'Juices and Smoothies',
         'Coffe & teas': 'Juices and Smoothies',
-        'Grocery': 'Grocery',
-        'Meat': 'Grocery' // Map Meat to Grocery as a fallback
+        'Global Pantry': 'Global Pantry'
     };
     
     const actualCategory = categoryMap[categoryName] || categoryName;
@@ -526,14 +533,13 @@ function filterProducts(categoryName) {
     // Map filter button labels to actual category titles
     const categoryMap = {
         'all': 'all',
-        'Veges': 'Veges',
-        'Vegetables': 'Veges',
+        'Vegetable': 'Vegetable',
+        'Vegetables': 'Vegetable',
         'Fruit': 'Fruit',
         'Fruits': 'Fruit',
         'Juices and Smoothies': 'Juices and Smoothies',
         'Coffe & teas': 'Juices and Smoothies',
-        'Grocery': 'Grocery',
-        'Meat': 'Grocery'
+        'Global Pantry': 'Global Pantry'
     };
     
     const actualCategory = categoryMap[categoryName] || categoryName;
@@ -639,14 +645,13 @@ function filterPackages(filterType) {
         selectedBtn.classList.add('bg-green-600', 'text-white');
     }
     
-    // Filter packages (placeholder - can be enhanced with actual filtering logic)
+    // Filter packages by assigned day from the database
     const packageItems = document.querySelectorAll('.package-item');
     packageItems.forEach(item => {
         if (filterType === 'all') {
             item.style.display = 'block';
         } else {
-            // Add actual filtering logic based on package properties
-            item.style.display = 'block';
+            item.style.display = item.dataset.day === filterType ? 'block' : 'none';
         }
     });
 }
@@ -718,6 +723,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+// Scroll to daily-packages section if hash is present on page load
+if (window.location.hash === '#daily-packages') {
+    const section = document.getElementById('daily-packages');
+    if (section) {
+        setTimeout(function() {
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+    }
+}
 </script>
 
 <?php require_once __DIR__ . '/../layouts/footer.php'; ?>

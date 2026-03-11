@@ -2,7 +2,10 @@
 /**
  * Cart Actions - Matching Node.js Backend Flow (Database-based cart)
  */
-session_start();
+// Start session only if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/config.php'; // for BASE_PATH
 require_once __DIR__ . '/auth.php';

@@ -89,6 +89,15 @@ if (empty($path) || $path === 'index.php') {
         header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '/green-grocers') . '/');
         exit;
     }
+} elseif ($path === 'fruit' || $path === 'website/pages/fruit.php') {
+    require_once __DIR__ . '/website/pages/fruit.php';
+    exit;
+} elseif ($path === 'vegetable' || $path === 'website/pages/vegetable.php') {
+    require_once __DIR__ . '/website/pages/vegetable.php';
+    exit;
+} elseif ($path === 'global-pantry' || $path === 'website/pages/global-pantry.php') {
+    require_once __DIR__ . '/website/pages/global-pantry.php';
+    exit;
 } elseif ($path === 'auth/login.php') {
     require_once __DIR__ . '/auth/login.php';
 } elseif ($path === 'auth/register.php') {

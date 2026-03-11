@@ -36,6 +36,7 @@ try {
 }
 
 // Function to generate UUID (for category ID)
+if (!function_exists('generateUUID')) {
 function generateUUID() {
     return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff), mt_rand(0, 0xffff),
@@ -44,6 +45,7 @@ function generateUUID() {
         mt_rand(0, 0x3fff) | 0x8000,
         mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
     );
+}
 }
 
 // Categories data with image paths
@@ -55,7 +57,7 @@ $categories = [
         'image' => 'uploads/categories/icon (1).png',
     ],
     [
-        'title' => 'Veges',
+        'title' => 'Vegetable',
         'image' => 'uploads/categories/icon.png',
     ],
     [
@@ -63,13 +65,17 @@ $categories = [
         'image' => 'uploads/categories/icon (4).png',
     ],
     [
-        'title' => 'Grocery',
-        'image' => 'uploads/categories/icon (3).png',
+        'title' => 'Global Pantry',
+        'image' => 'pantry.png',
     ],
     [
         'title' => 'Juices and Smoothies',
         'image' => 'uploads/categories/icon (2).png',
     ],
+    [
+        'title' => 'Grocery',
+        'image' => 'uploads/categories/icon (2).png',
+    ]
 ];
 
 // Insert categories

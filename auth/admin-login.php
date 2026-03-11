@@ -16,6 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . BASE_PATH . '/dashboard/pages/dashboard.php');
             exit;
         } else {
+            // Explicitly destroy session for non-admin login on admin portal.
+            logoutUser();
             $error = 'Access denied. Admin access required.';
         }
     } else {
@@ -52,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="password" name="password" placeholder="Enter password" class="w-full border px-3 py-2 rounded-lg" required />
                 </div>
                 <button type="submit" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">Login</button>
-                <p class="text-center text-md mt-3">Don't have an account? <a href="<?php echo BASE_PATH; ?>/auth/register.php" class="text-green-600 font-medium">Sign up</a></p>
+                <p class="text-center text-sm mt-3 text-gray-600">Customer account? <a href="<?php echo BASE_PATH; ?>/auth/login.php" class="text-green-600 font-medium">Use customer login</a></p>
             </form>
         </div>
     </div>

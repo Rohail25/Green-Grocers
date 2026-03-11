@@ -161,12 +161,10 @@ $products = getAllProducts();
                     <img src="<?php echo htmlspecialchars($package['image']); ?>" alt="Current" class="max-w-full max-h-48 mx-auto mb-4 rounded">
                 <?php endif; ?>
                 <input type="file" name="image" id="imageUpload" accept="image/*" class="hidden" onchange="previewImage(this)">
-                <label for="imageUpload" class="cursor-pointer">
-                    <div id="imagePreview" class="mb-4"></div>
-                    <button type="button" class="px-4 py-2 bg-gray-100 rounded-md hover:bg-gray-200">
-                        <?php echo !empty($package['image']) ? 'Change Image' : 'Upload Image'; ?>
-                    </button>
-                </label>
+                <div id="imagePreview" class="mb-4"></div>
+                <button type="button" onclick="document.getElementById('imageUpload').click()" class="px-4 py-2 bg-gray-100 rounded-md hover:bg-gray-200 cursor-pointer">
+                    <?php echo !empty($package['image']) ? 'Change Image' : 'Upload Image'; ?>
+                </button>
             </div>
         </div>
 
@@ -179,7 +177,10 @@ $products = getAllProducts();
                         <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block mb-1 text-sm font-semibold">Product Name</label>
-                                <input type="text" name="items[<?php echo $idx; ?>][name]" required class="w-full border px-3 py-2 rounded-md" value="<?php echo htmlspecialchars($item['name'] ?? ''); ?>">
+                                <div class="relative">
+                                    <input type="text" name="items[<?php echo $idx; ?>][name]" required class="w-full border px-3 py-2 rounded-md js-item-name-input" value="<?php echo htmlspecialchars($item['name'] ?? ''); ?>" autocomplete="off" placeholder="Product name">
+                                    <div class="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-40 max-h-64 overflow-y-auto js-item-name-suggestions"></div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block mb-1 text-sm font-semibold">Quantity</label>
@@ -230,7 +231,10 @@ function addItem() {
         <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block mb-1 text-sm font-semibold">Product Name</label>
-                <input type="text" name="items[${itemCount}][name]" required class="w-full border px-3 py-2 rounded-md" placeholder="Product name">
+                <div class="relative">
+                    <input type="text" name="items[${itemCount}][name]" required class="w-full border px-3 py-2 rounded-md js-item-name-input" placeholder="Product name" autocomplete="off">
+                    <div class="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-40 max-h-64 overflow-y-auto js-item-name-suggestions"></div>
+                </div>
             </div>
             <div>
                 <label class="block mb-1 text-sm font-semibold">Quantity</label>
@@ -244,12 +248,68 @@ function addItem() {
         </button>
     `;
     container.appendChild(itemDiv);
+    const newInput = itemDiv.querySelector('.js-item-name-input');
+    const newDropdown = itemDiv.querySelector('.js-item-name-suggestions');
+    if (newInput && newDropdown) setupNameAutocomplete(newInput, newDropdown);
     itemCount++;
 }
 
 function removeItem(button) {
     button.parentElement.remove();
 }
+
+function setupNameAutocomplete(input, dropdown) {
+    let timer = null;
+
+    function closeDropdown() {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+    }
+
+    function escapeHtml(v) {
+        return String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    input.addEventListener('input', function () {
+        const query = input.value.trim();
+        if (timer) clearTimeout(timer);
+        if (query.length < 1) { closeDropdown(); return; }
+        timer = setTimeout(function () {
+            fetch('<?php echo BASE_PATH; ?>/includes/search-suggestions.php?q=' + encodeURIComponent(query) + '&limit=8')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data || !data.success || !Array.isArray(data.items) || data.items.length === 0) {
+                        closeDropdown(); return;
+                    }
+                    dropdown.innerHTML = data.items.map(function (item) {
+                        var name = escapeHtml(item.name);
+                        var label = item.type === 'package' ? 'Package' : 'Product';
+                        return '<button type="button" class="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between" data-name="' + name + '">' +
+                            '<span class="text-sm text-gray-800">' + name + '</span>' +
+                            '<span class="text-xs text-gray-500">' + label + '</span></button>';
+                    }).join('');
+                    dropdown.classList.remove('hidden');
+                    dropdown.querySelectorAll('button[data-name]').forEach(function (btn) {
+                        btn.addEventListener('mousedown', function (e) {
+                            e.preventDefault();
+                            input.value = btn.getAttribute('data-name') || '';
+                            closeDropdown();
+                        });
+                    });
+                })
+                .catch(closeDropdown);
+        }, 180);
+    });
+
+    input.addEventListener('blur', function () { setTimeout(closeDropdown, 150); });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.js-item-name-input').forEach(function (input) {
+        var dropdown = input.parentElement.querySelector('.js-item-name-suggestions');
+        if (dropdown) setupNameAutocomplete(input, dropdown);
+    });
+});
 
 function previewImage(input) {
     if (input.files && input.files[0]) {

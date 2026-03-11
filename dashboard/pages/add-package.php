@@ -115,7 +115,10 @@ $products = getAllProducts();
         <!-- Package Name -->
         <div>
             <label class="block mb-2 font-semibold">Package Name <span class="text-red-500">*</span></label>
-            <input type="text" name="package_name" required class="w-full border px-4 py-3 rounded-md" placeholder="Enter package name" value="<?php echo htmlspecialchars($_POST['package_name'] ?? ''); ?>">
+            <div class="relative">
+                <input type="text" id="admin-package-name-input" name="package_name" required class="w-full border px-4 py-3 rounded-md" placeholder="Enter package name" value="<?php echo htmlspecialchars($_POST['package_name'] ?? ''); ?>" autocomplete="off">
+                <div id="admin-package-name-suggestions" class="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-40 max-h-64 overflow-y-auto"></div>
+            </div>
         </div>
 
         <!-- Assigned Day and Price -->
@@ -194,7 +197,10 @@ function addItem() {
         <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block mb-1 text-sm font-semibold">Product Name</label>
-                <input type="text" name="items[${itemCount}][name]" required class="w-full border px-3 py-2 rounded-md" placeholder="Product name">
+                <div class="relative">
+                    <input type="text" name="items[${itemCount}][name]" required class="w-full border px-3 py-2 rounded-md js-item-name-input" placeholder="Product name" autocomplete="off">
+                    <div class="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-40 max-h-64 overflow-y-auto js-item-name-suggestions"></div>
+                </div>
             </div>
             <div>
                 <label class="block mb-1 text-sm font-semibold">Quantity</label>
@@ -208,6 +214,11 @@ function addItem() {
         </button>
     `;
     container.appendChild(itemDiv);
+    const newInput = itemDiv.querySelector('.js-item-name-input');
+    const newDropdown = itemDiv.querySelector('.js-item-name-suggestions');
+    if (newInput && newDropdown) {
+        setupNameAutocomplete(newInput, newDropdown);
+    }
     itemCount++;
 }
 
@@ -225,6 +236,75 @@ function previewImage(input) {
         reader.readAsDataURL(input.files[0]);
     }
 }
+
+function setupNameAutocomplete(input, dropdown) {
+    if (!input || !dropdown) {
+        return;
+    }
+
+    let timer = null;
+
+    function closeDropdown() {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+    }
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    input.addEventListener('input', function() {
+        const query = input.value.trim();
+        if (timer) {
+            clearTimeout(timer);
+        }
+        if (query.length < 1) {
+            closeDropdown();
+            return;
+        }
+
+        timer = setTimeout(() => {
+            fetch('<?php echo BASE_PATH; ?>/includes/search-suggestions.php?q=' + encodeURIComponent(query) + '&limit=8')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data || !data.success || !Array.isArray(data.items) || data.items.length === 0) {
+                        closeDropdown();
+                        return;
+                    }
+
+                    dropdown.innerHTML = data.items.map(item => {
+                        const name = escapeHtml(item.name);
+                        const typeLabel = item.type === 'package' ? 'Package' : 'Product';
+                        return '<button type="button" class="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between" data-name="' + name + '">' +
+                            '<span class="text-sm text-gray-800">' + name + '</span>' +
+                            '<span class="text-xs text-gray-500">' + typeLabel + '</span>' +
+                        '</button>';
+                    }).join('');
+
+                    dropdown.classList.remove('hidden');
+
+                    dropdown.querySelectorAll('button[data-name]').forEach(button => {
+                        button.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            input.value = this.getAttribute('data-name') || '';
+                            closeDropdown();
+                        });
+                    });
+                })
+                .catch(() => closeDropdown());
+        }, 180);
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(closeDropdown, 150);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const packageNameInput = document.getElementById('admin-package-name-input');
+    const packageNameDropdown = document.getElementById('admin-package-name-suggestions');
+    setupNameAutocomplete(packageNameInput, packageNameDropdown);
+});
 
 // Add one item by default
 addItem();

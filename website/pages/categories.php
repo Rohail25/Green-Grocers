@@ -16,46 +16,15 @@ $allPackages = getAllPackages();
 
 <div class="w-full">
     <!-- Hero Section -->
-    <section class="relative px-6 py-20 md:py-28 flex flex-col items-center justify-center overflow-hidden mt-[8rem]" style="background-color: #f5f5f5; background-image: url('<?php echo imagePath('category.jpg'); ?>'); background-size: cover; background-position: center;">
-        <div class="absolute inset-0 bg-white/50 backdrop-blur-md"></div>
-        <div class="max-w-2xl text-center z-10 relative">
-            <h2 class="text-4xl md:text-6xl font-bold text-gray-900 leading-tight" style="font-family: 'Arial', sans-serif; line-height: 1.1;">Fresh Vegetables</h2>
-            <p class="text-lg md:text-xl text-gray-700 mt-4" style="font-family: 'Arial', sans-serif;">Choose from a wide variety of fresh, organic vegetables delivered daily</p>
-            
-            <!-- Search Bar Section -->
-            <div class="max-w-2xl w-full z-10 mt-8">
-                <div class="flex gap-2 items-center">
-                    <div class="relative flex-1">
-                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                        </svg>
-                        <input type="text" id="hero-search-input" placeholder="Search for items..." class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white" style="font-family: 'Arial', sans-serif;" />
-                    </div>
-                    <button onclick="performHeroSearch()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium" style="font-family: 'Arial', sans-serif;">Search</button>
-                </div>
-                
-                <!-- Suggested Items -->
-                <div class="mt-4 bg-white rounded-lg p-4 shadow-md flex items-center gap-1 flex-wrap" style="font-family: 'Arial', sans-serif;">
-                    <p class="text-sm font-bold text-black">Suggested:</p>
-                    <?php 
-                    $suggestedItems = getSuggestedCategories(); // implement this
-                     foreach ($suggestedItems as $item): ?>
-                        <a href="<?= BASE_PATH ?>/category?name=<?= urlencode($item) ?>"
-                           class="px-4 py-1.5 bg-gray-300 text-black rounded-2xl text-sm hover:bg-green-200 transition">
-                            <?= htmlspecialchars($item) ?>
-                        </a>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-    </section>
+    
 
+    <div class="h-[80px] w-full"></div>
     <!-- Dynamic Text Section -->
     <?php 
     $dynamicTexts = getActiveDynamicTexts();
     if (!empty($dynamicTexts)): 
     ?>
-    <section class="px-6 py-10 bg-white">
+    <!-- <section class="px-6 py-10 bg-white">
         <div class="max-w-6xl mx-auto">
             <?php foreach ($dynamicTexts as $text): ?>
                 <div class="mb-8 last:mb-0">
@@ -68,7 +37,7 @@ $allPackages = getAllPackages();
                 </div>
             <?php endforeach; ?>
         </div>
-    </section>
+    </section> -->
     <?php endif; ?>
 
     <!-- Available Fresh Vegetables Section -->
@@ -259,9 +228,76 @@ function searchSuggestedItem(item) {
     window.location.href = '<?php echo BASE_PATH; ?>/category?search=' + encodeURIComponent(item);
 }
 
+function setupHeroAutocomplete() {
+    const input = document.getElementById('hero-search-input');
+    const dropdown = document.getElementById('hero-search-suggestions');
+    if (!input || !dropdown) {
+        return;
+    }
+
+    let timer = null;
+
+    function closeDropdown() {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+    }
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    input.addEventListener('input', function() {
+        const query = input.value.trim();
+        if (timer) {
+            clearTimeout(timer);
+        }
+        if (query.length < 1) {
+            closeDropdown();
+            return;
+        }
+
+        timer = setTimeout(() => {
+            fetch('<?php echo BASE_PATH; ?>/includes/search-suggestions.php?q=' + encodeURIComponent(query) + '&limit=8')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data || !data.success || !Array.isArray(data.items) || data.items.length === 0) {
+                        closeDropdown();
+                        return;
+                    }
+
+                    dropdown.innerHTML = data.items.map(item => {
+                        const name = escapeHtml(item.name);
+                        const typeLabel = item.type === 'package' ? 'Package' : 'Product';
+                        return '<button type="button" class="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between" data-name="' + name + '">' +
+                            '<span class="text-sm text-gray-800">' + name + '</span>' +
+                            '<span class="text-xs text-gray-500">' + typeLabel + '</span>' +
+                        '</button>';
+                    }).join('');
+
+                    dropdown.classList.remove('hidden');
+
+                    dropdown.querySelectorAll('button[data-name]').forEach(button => {
+                        button.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            input.value = this.getAttribute('data-name') || '';
+                            closeDropdown();
+                            performHeroSearch();
+                        });
+                    });
+                })
+                .catch(() => closeDropdown());
+        }, 180);
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(closeDropdown, 150);
+    });
+}
+
 // Allow Enter key to trigger search in hero section
 document.addEventListener('DOMContentLoaded', function() {
     const heroSearchInput = document.getElementById('hero-search-input');
+    setupHeroAutocomplete();
     if (heroSearchInput) {
         heroSearchInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {

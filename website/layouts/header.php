@@ -4,6 +4,30 @@ require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/functions.php';
 $currentUser = getCurrentUser();
 $isAuthenticated = isAuthenticated();
+
+$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
+$requestPath = parse_url($requestUri, PHP_URL_PATH) ?: '/';
+$basePath = defined('BASE_PATH') ? BASE_PATH : '';
+
+if ($basePath !== '' && strpos($requestPath, $basePath) === 0) {
+    $requestPath = substr($requestPath, strlen($basePath));
+}
+
+$requestPath = '/' . trim($requestPath, '/');
+if ($requestPath === '/index.php') {
+    $requestPath = '/';
+}
+
+$desktopActiveClass = 'text-lg font-bold text-black';
+$desktopInactiveClass = 'text-lg font-bold text-gray-500 hover:text-black';
+$mobileActiveClass = 'text-lg font-bold text-black';
+$mobileInactiveClass = 'text-lg font-bold text-gray-500 hover:text-black';
+
+$isHomeActive = ($requestPath === '/');
+$isCategoriesActive = ($requestPath === '/categories' || $requestPath === '/category');
+$isFruitActive = ($requestPath === '/fruit' || $requestPath === '/website/pages/fruit.php');
+$isVegetableActive = ($requestPath === '/vegetable' || $requestPath === '/website/pages/vegetable.php');
+$isGlobalPantryActive = ($requestPath === '/global-pantry' || $requestPath === '/website/pages/global-pantry.php');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -23,7 +47,7 @@ $isAuthenticated = isAuthenticated();
     </style>
 </head>
 <body>
-<nav class="fixed top-0 z-50 w-full bg-white shadow-sm px-6 py-2 flex items-center justify-between">
+<nav class="fixed top-0 z-50 w-full bg-white shadow-lg px-6 py-2 flex items-center justify-between h-16">
     <!-- Logo -->
     <div class="flex items-center gap-2">
         <a href="<?php echo BASE_PATH; ?>/">
@@ -33,9 +57,12 @@ $isAuthenticated = isAuthenticated();
 
     <!-- Nav Links - Desktop -->
     <div class="hidden md:flex gap-6 items-center">
-        <a href="<?php echo BASE_PATH; ?>/" class="text-md font-normal text-black">Home</a>
-        <a href="<?php echo BASE_PATH; ?>/categories" class="text-md font-normal text-gray-500 hover:text-black">Categories</a>
-        <a href="#" class="text-md font-normal text-gray-500 hover:text-black">Daily Packages</a>
+        <a href="<?php echo BASE_PATH; ?>/" class="<?php echo $isHomeActive ? $desktopActiveClass : $desktopInactiveClass; ?>">Home</a>
+        <a href="<?php echo BASE_PATH; ?>/categories" class="<?php echo $isCategoriesActive ? $desktopActiveClass : $desktopInactiveClass; ?>">All Items</a>
+        <a href="<?php echo BASE_PATH; ?>/fruit" class="<?php echo $isFruitActive ? $desktopActiveClass : $desktopInactiveClass; ?>">Fruits</a>
+        <a href="<?php echo BASE_PATH; ?>/vegetable" class="<?php echo $isVegetableActive ? $desktopActiveClass : $desktopInactiveClass; ?>">Vegetables</a>
+        <a href="<?php echo BASE_PATH; ?>/global-pantry" class="<?php echo $isGlobalPantryActive ? $desktopActiveClass : $desktopInactiveClass; ?>">Global Pantry</a>
+        <a href="<?php echo BASE_PATH; ?>/#daily-packages" class="text-lg font-bold text-gray-500 hover:text-black">Daily Packages</a>
     </div>
 
     <!-- Right Side -->
@@ -61,6 +88,7 @@ $isAuthenticated = isAuthenticated();
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
                 <input type="text" id="header-search-input" placeholder="Search products..." class="pl-10 pr-4 py-2 w-64 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <div id="header-search-suggestions" class="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-50 max-h-64 overflow-y-auto"></div>
             </div>
         </div>
 
@@ -71,6 +99,7 @@ $isAuthenticated = isAuthenticated();
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
                 <input type="text" id="mobile-header-search-input" placeholder="Search..." class="pl-8 pr-2 py-1.5 w-32 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <div id="mobile-header-search-suggestions" class="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-50 max-h-64 overflow-y-auto"></div>
             </div>
             <button onclick="performHeaderSearch()" class="p-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -128,9 +157,12 @@ $isAuthenticated = isAuthenticated();
 
     <!-- Mobile Menu Panel -->
     <div id="mobile-menu" class="hidden absolute top-full left-0 w-full bg-white shadow-md flex flex-col items-center gap-4 py-6 md:hidden z-40">
-        <a href="<?php echo BASE_PATH; ?>/" class="text-lg font-bold text-black">Home</a>
-        <a href="<?php echo BASE_PATH; ?>/categories" class="text-lg font-bold text-gray-500 hover:text-black">Categories</a>
-        <a href="#" class="text-lg font-bold text-gray-500 hover:text-black">Daily Packages</a>
+        <a href="<?php echo BASE_PATH; ?>/" class="<?php echo $isHomeActive ? $mobileActiveClass : $mobileInactiveClass; ?>">Home</a>
+        <a href="<?php echo BASE_PATH; ?>/categories" class="<?php echo $isCategoriesActive ? $mobileActiveClass : $mobileInactiveClass; ?>">Categories</a>
+        <a href="<?php echo BASE_PATH; ?>/fruit" class="<?php echo $isFruitActive ? $mobileActiveClass : $mobileInactiveClass; ?>">Fruits</a>
+        <a href="<?php echo BASE_PATH; ?>/vegetable" class="<?php echo $isVegetableActive ? $mobileActiveClass : $mobileInactiveClass; ?>">Vegetables</a>
+        <a href="<?php echo BASE_PATH; ?>/global-pantry" class="<?php echo $isGlobalPantryActive ? $mobileActiveClass : $mobileInactiveClass; ?>">Global Pantry</a>
+        <a href="<?php echo BASE_PATH; ?>/#daily-packages" class="text-lg font-bold text-gray-500 hover:text-black">Daily Packages</a>
         
         <?php if ($isAuthenticated): ?>
             <div class="flex flex-col items-center gap-2">
@@ -188,6 +220,82 @@ function performHeaderSearch() {
     }
 }
 
+function setupHeaderAutocomplete(inputId, dropdownId) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!input || !dropdown) {
+        return;
+    }
+
+    let timer = null;
+
+    function hideDropdown() {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+    }
+
+    function renderSuggestions(items) {
+        if (!items.length) {
+            hideDropdown();
+            return;
+        }
+
+        const escapeHtml = (value) => String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+
+        dropdown.innerHTML = items.map(item => {
+            const safeName = escapeHtml(item.name);
+            const badge = item.type === 'package' ? 'Package' : 'Product';
+            return '<button type="button" class="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between" data-name="' + safeName + '">' +
+                '<span class="text-sm text-gray-800">' + safeName + '</span>' +
+                '<span class="text-xs text-gray-500">' + badge + '</span>' +
+            '</button>';
+        }).join('');
+        dropdown.classList.remove('hidden');
+
+        dropdown.querySelectorAll('button[data-name]').forEach(btn => {
+            btn.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                input.value = this.getAttribute('data-name') || '';
+                hideDropdown();
+                performHeaderSearch();
+            });
+        });
+    }
+
+    input.addEventListener('input', function() {
+        const value = input.value.trim();
+        if (timer) {
+            clearTimeout(timer);
+        }
+
+        if (value.length < 1) {
+            hideDropdown();
+            return;
+        }
+
+        timer = setTimeout(() => {
+            fetch('<?php echo BASE_PATH; ?>/includes/search-suggestions.php?q=' + encodeURIComponent(value) + '&limit=8')
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success && Array.isArray(data.items)) {
+                        renderSuggestions(data.items);
+                    } else {
+                        hideDropdown();
+                    }
+                })
+                .catch(() => hideDropdown());
+        }, 180);
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(hideDropdown, 150);
+    });
+}
+
 // Allow Enter key to trigger search and preserve search query in input
 document.addEventListener('DOMContentLoaded', function() {
     const mobileInput = document.getElementById('mobile-header-search-input');
@@ -219,6 +327,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    setupHeaderAutocomplete('header-search-input', 'header-search-suggestions');
+    setupHeaderAutocomplete('mobile-header-search-input', 'mobile-header-search-suggestions');
 });
 </script>
 

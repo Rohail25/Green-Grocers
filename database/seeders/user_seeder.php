@@ -35,6 +35,7 @@ try {
 }
 
 // Function to generate UUID (for user ID)
+if (!function_exists('generateUUID')) {
 function generateUUID() {
     return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff), mt_rand(0, 0xffff),
@@ -43,6 +44,7 @@ function generateUUID() {
         mt_rand(0, 0x3fff) | 0x8000,
         mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
     );
+}
 }
 
 // Function to generate vendorId/clientId (same as in auth.php)

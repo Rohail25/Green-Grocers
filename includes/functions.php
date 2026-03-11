@@ -72,14 +72,26 @@ function getFeaturedProducts($limit = 6) {
 // Match Node.js: getProductsByCategoryName
 function getProductsByCategory($categoryName) {
     $conn = getDBConnection();
+    $normalized = strtolower(trim((string)$categoryName));
+    $aliases = [$categoryName];
+
+    if ($normalized === 'fruit' || $normalized === 'fruits') {
+        $aliases = ['Fruit', 'Fruits'];
+    } elseif ($normalized === 'vegetable' || $normalized === 'vegetables' || $normalized === 'veges') {
+        $aliases = ['Vegetable', 'Vegetables', 'Veges'];
+    } elseif ($normalized === 'global pantry' || $normalized === 'global pentary' || $normalized === 'grocery') {
+        $aliases = ['Global Pantry', 'Global Pentary', 'Grocery'];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($aliases), '?'));
     $stmt = $conn->prepare("
         SELECT p.*, c.title as category_name 
         FROM products p 
         LEFT JOIN categories c ON p.categoryId = c.id 
-        WHERE c.title = :title AND p.status = 'active' 
+        WHERE c.title IN ($placeholders) AND p.status = 'active' 
         ORDER BY p.created_at DESC
     ");
-    $stmt->execute([':title' => $categoryName]);
+    $stmt->execute($aliases);
     $products = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         // Match Node.js: decode all JSON fields
@@ -193,6 +205,65 @@ function searchProducts($searchQuery) {
             return [];
         }
     }
+}
+
+// Returns mixed product/package name suggestions for autocomplete dropdowns.
+function getNameSuggestions(string $query, int $limit = 10): array {
+    $term = trim($query);
+    if ($term === '') {
+        return [];
+    }
+
+    $conn = getDBConnection();
+    $like = '%' . $term . '%';
+    $limit = max(1, min(50, $limit));
+
+    $items = [];
+    $seen = [];
+
+    $productStmt = $conn->prepare(
+        "SELECT name FROM products WHERE status = 'active' AND name LIKE :q ORDER BY name ASC LIMIT :lim"
+    );
+    $productStmt->bindValue(':q', $like, PDO::PARAM_STR);
+    $productStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $productStmt->execute();
+
+    while ($row = $productStmt->fetch(PDO::FETCH_ASSOC)) {
+        $name = trim((string)($row['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $key = strtolower($name);
+        if (!isset($seen[$key])) {
+            $seen[$key] = true;
+            $items[] = ['name' => $name, 'type' => 'product'];
+        }
+    }
+
+    $packageStmt = $conn->prepare(
+        "SELECT name FROM packages WHERE status = 'active' AND name LIKE :q ORDER BY name ASC LIMIT :lim"
+    );
+    $packageStmt->bindValue(':q', $like, PDO::PARAM_STR);
+    $packageStmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $packageStmt->execute();
+
+    while ($row = $packageStmt->fetch(PDO::FETCH_ASSOC)) {
+        $name = trim((string)($row['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $key = strtolower($name);
+        if (!isset($seen[$key])) {
+            $seen[$key] = true;
+            $items[] = ['name' => $name, 'type' => 'package'];
+        }
+    }
+
+    usort($items, function ($a, $b) {
+        return strcasecmp($a['name'], $b['name']);
+    });
+
+    return array_slice($items, 0, $limit);
 }
 
 // Match Node.js: getFeaturedPackages (used on public site - show all active packages)
@@ -460,6 +531,187 @@ function toggleProductFeatured($productId) {
     return $stmt->execute([':id' => $productId]);
 }
 
+// ============ DAILY PACKAGES FUNCTIONS ============
+
+function normalizePackageDayName($value) {
+    $normalized = strtolower(trim((string)$value));
+    $dayMap = [
+        'mon' => 'Monday',
+        'monday' => 'Monday',
+        'tue' => 'Tuesday',
+        'tues' => 'Tuesday',
+        'tuesday' => 'Tuesday',
+        'wed' => 'Wednesday',
+        'wednesday' => 'Wednesday',
+        'thu' => 'Thursday',
+        'thur' => 'Thursday',
+        'thurs' => 'Thursday',
+        'thursday' => 'Thursday',
+        'fri' => 'Friday',
+        'friday' => 'Friday',
+        'sat' => 'Saturday',
+        'saturday' => 'Saturday',
+        'sun' => 'Sunday',
+        'sunday' => 'Sunday'
+    ];
+
+    return $dayMap[$normalized] ?? null;
+}
+
+// Get packages by day (for landing page daily packages section)
+function getPackagesByDay($day) {
+    $conn = getDBConnection();
+    $normalizedDay = normalizePackageDayName($day);
+
+    if ($normalizedDay === null) {
+        return [];
+    }
+    
+    $stmt = $conn->prepare("
+        SELECT * FROM packages 
+        WHERE status = 'active' 
+        AND LOWER(TRIM(packageDay)) IN (:day, :shortDay)
+        ORDER BY rating DESC, totalOrders DESC, created_at DESC
+    ");
+    
+    $stmt->execute([
+        ':day' => strtolower($normalizedDay),
+        ':shortDay' => strtolower(substr($normalizedDay, 0, 3))
+    ]);
+    $packages = [];
+    
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $row['items'] = !empty($row['items']) ? json_decode($row['items'], true) : [];
+        $row['discount'] = !empty($row['discount']) ? json_decode($row['discount'], true) : ['type' => 'percentage', 'value' => 0];
+        $row['tags'] = !empty($row['tags']) ? json_decode($row['tags'], true) : [];
+        
+        if (!isset($row['discount']['value'])) {
+            $row['discount']['value'] = 0;
+        }
+        $packages[] = $row;
+    }
+    
+    return $packages;
+}
+
+// Get all daily packages grouped by day
+function getDailyPackages() {
+    $weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    $packagesByDay = [];
+    
+    // Initialize empty arrays for each day
+    foreach ($weekDays as $day) {
+        $packagesByDay[$day] = [];
+    }
+
+    foreach ($weekDays as $dayName) {
+        $packagesByDay[$dayName] = getPackagesByDay($dayName);
+    }
+    
+    return $packagesByDay;
+}
+
+// Get all packages for admin daily packages management
+function getAllDailyPackagesAdmin() {
+    $conn = getDBConnection();
+    $stmt = $conn->query("
+        SELECT * FROM packages 
+        ORDER BY packageDay ASC, created_at DESC
+    ");
+    
+    $packages = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $row['items'] = !empty($row['items']) ? json_decode($row['items'], true) : [];
+        $row['discount'] = !empty($row['discount']) ? json_decode($row['discount'], true) : ['type' => 'percentage', 'value' => 0];
+        $row['tags'] = !empty($row['tags']) ? json_decode($row['tags'], true) : [];
+        
+        if (!isset($row['discount']['value'])) {
+            $row['discount']['value'] = 0;
+        }
+        $packages[] = $row;
+    }
+    
+    return $packages;
+}
+
+// Get package by ID
+function getPackageById($packageId) {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare("SELECT * FROM packages WHERE id = :id");
+    $stmt->execute([':id' => $packageId]);
+    
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        $row['items'] = !empty($row['items']) ? json_decode($row['items'], true) : [];
+        $row['discount'] = !empty($row['discount']) ? json_decode($row['discount'], true) : ['type' => 'percentage', 'value' => 0];
+        $row['tags'] = !empty($row['tags']) ? json_decode($row['tags'], true) : [];
+        
+        if (!isset($row['discount']['value'])) {
+            $row['discount']['value'] = 0;
+        }
+    }
+    
+    return $row;
+}
+
+// Search products by category for category-specific search
+function searchProductsByCategory($searchQuery, $categoryName) {
+    if (empty(trim($searchQuery))) {
+        return [];
+    }
+    
+    $conn = getDBConnection();
+    $searchTerm = '%' . trim($searchQuery) . '%';
+    
+    try {
+        $normalized = strtolower(trim((string)$categoryName));
+        $aliases = [$categoryName];
+
+        if ($normalized === 'fruit' || $normalized === 'fruits') {
+            $aliases = ['Fruit', 'Fruits'];
+        } elseif ($normalized === 'vegetable' || $normalized === 'vegetables' || $normalized === 'veges') {
+            $aliases = ['Vegetable', 'Vegetables', 'Veges'];
+        } elseif ($normalized === 'global pantry' || $normalized === 'global pentary' || $normalized === 'grocery') {
+            $aliases = ['Global Pantry', 'Global Pentary', 'Grocery'];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($aliases), '?'));
+        $sql = "
+            SELECT p.*, c.title as category_name 
+            FROM products p 
+            LEFT JOIN categories c ON p.categoryId = c.id 
+            WHERE p.status = 'active' 
+            AND c.title IN ($placeholders)
+            AND (
+                LOWER(p.name) LIKE LOWER(?) 
+                OR LOWER(COALESCE(p.description, '')) LIKE LOWER(?)
+            )
+            ORDER BY p.created_at DESC
+        ";
+
+        $stmt = $conn->prepare($sql);
+        $params = array_merge($aliases, [$searchTerm, $searchTerm]);
+        $stmt->execute($params);
+        
+        $products = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $row['images'] = !empty($row['images']) ? json_decode($row['images'], true) : [];
+            $row['variants'] = !empty($row['variants']) ? json_decode($row['variants'], true) : [];
+            $row['discount'] = !empty($row['discount']) ? json_decode($row['discount'], true) : ['type' => 'percentage', 'value' => 0];
+            $row['tags'] = !empty($row['tags']) ? json_decode($row['tags'], true) : [];
+            
+            if (!isset($row['discount']['value'])) {
+                $row['discount']['value'] = 0;
+            }
+            $products[] = $row;
+        }
+        return $products;
+    } catch (PDOException $e) {
+        error_log("Category search error: " . $e->getMessage());
+        return [];
+    }
+}
+
 // Match Node.js: getSingleProduct with reviews
 function getSingleProduct($productId) {
     $conn = getDBConnection();
@@ -486,23 +738,6 @@ function getSingleProduct($productId) {
     return $product;
 }
 
-// Match Node.js: getPackagesByDay
-function getPackagesByDay($day) {
-    $conn = getDBConnection();
-    $stmt = $conn->prepare("
-        SELECT * FROM packages 
-        WHERE packageDay = :day AND status = 'active'
-        ORDER BY rating DESC
-    ");
-    $stmt->execute([':day' => $day]);
-    $packages = [];
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $row['items'] = !empty($row['items']) ? json_decode($row['items'], true) : [];
-        $row['discount'] = !empty($row['discount']) ? json_decode($row['discount'], true) : ['type' => 'percentage', 'value' => 0];
-        $packages[] = $row;
-    }
-    return $packages;
-}
 
 // Generate placeholder image with product name
 function generateProductPlaceholder($productName, $width = 400, $height = 400) {
